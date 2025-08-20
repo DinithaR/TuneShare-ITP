@@ -1,4 +1,3 @@
-
 import imagekit from "../configs/imageKit.js";
 import Booking from "../models/Booking.js";
 import Instrument from "../models/Instrument.js";
@@ -86,33 +85,6 @@ export const toggleInstrumentAvailability = async (req, res) => {
         res.json({success: false, message: error.message})
     }
 }
-
-// // API to Toggle instrument Availability
-// export const toggleInstrumentAvailability = async (req, res) => {
-//     try {
-//         const { _id } = req.user;
-//         const { instrumentId } = req.body;
-//         const instrument = await Instrument.findById(instrumentId);
-
-//         if (!instrument) {
-//             return res.json({ success: false, message: "Instrument not found" });
-//         }
-//         if (!instrument.owner) {
-//             return res.json({ success: false, message: "Instrument has no owner" });
-//         }
-//         if (instrument.owner.toString() !== _id.toString()) {
-//             return res.json({ success: false, message: "Unauthorized" });
-//         }
-
-//         instrument.isAvailable = !instrument.isAvailable;
-//         await instrument.save();
-
-//         res.json({ success: true, message: "Availability Toggled", instrument });
-//     } catch (error) {
-//         console.log(error.message);
-//         res.json({ success: false, message: error.message });
-//     }
-// }
 
 // API to delete a instrument
 export const deleteInstrument = async (req, res) => {
