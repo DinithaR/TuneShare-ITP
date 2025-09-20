@@ -119,7 +119,25 @@ const MyBookings = () => {
               <div className='md:col-span-2'>
                 <div className='flex items-center gap-2'>
                   <p className='px-3 py-1.5 rounded' style={{ backgroundColor: 'var(--color-light)' }}>Booking #{index+1}</p>
-                  <p className={`px-3 py-1 text-xs rounded-full ${booking.status === 'confirmed' ? 'bg-green-400/15 text-green-600' : 'bg-red-400/15 text-red-600'}`}>{booking.status}</p>
+                  {/* Status badge with more nuanced colors */}
+                  {(() => {
+                    let badgeText = booking.status;
+                    let badgeClasses = 'px-3 py-1 text-xs rounded-full ';
+                    if (booking.status === 'confirmed') {
+                      badgeClasses += 'bg-green-400/15 text-green-600';
+                    } else if (booking.status === 'cancelled') {
+                      badgeClasses += 'bg-red-400/15 text-red-600';
+                    } else {
+                      // pending
+                      if (booking.paymentStatus === 'paid') {
+                        badgeText = 'awaiting-approval';
+                        badgeClasses += 'bg-amber-400/15 text-amber-600';
+                      } else {
+                        badgeClasses += 'bg-gray-400/15 text-gray-600';
+                      }
+                    }
+                    return <p className={badgeClasses}>{badgeText}</p>;
+                  })()}
                 </div>
                 {editId === booking._id ? (
                   <div className='mt-3 flex flex-col gap-2'>
@@ -178,8 +196,11 @@ const MyBookings = () => {
                   <h1 className='text-2xl font-semibold' style={{ color: 'var(--color-primary)' }}>{currency}{booking.price}</h1>
                   <p>Booked on {booking.createdAt.split('T')[0]}</p>
                   {booking.paymentStatus === 'paid' && (
-                    <div className='mt-2 text-xs text-green-600'>
+                    <div className='mt-2 text-xs text-green-600 space-y-0.5'>
                       <p className='font-medium'>Payment: Paid</p>
+                      {booking.status !== 'confirmed' && (
+                        <p className='text-amber-600'>Awaiting owner approval</p>
+                      )}
                       {booking.commission != null && (
                         <p className='text-gray-500'>Commission: {currency}{booking.commission}</p>
                       )}

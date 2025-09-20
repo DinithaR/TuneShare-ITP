@@ -137,11 +137,26 @@ export const mockPaymentSuccess = async (req, res) => {
     const { bookingId } = req.body;
     const booking = await Booking.findById(bookingId);
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (booking.paymentStatus === 'paid') {
+      return res.json({ success: false, message: 'Already marked as paid', booking });
+    }
     booking.paymentStatus = 'paid';
-    booking.status = 'confirmed';
+    // Leave booking.status unchanged (likely 'pending') to require owner approval
     booking.paidAt = new Date();
     await booking.save();
-    res.json({ success: true, message: 'Booking marked as paid (mock)', booking });
+    // Update or create Payment doc to succeeded
+    try {
+      await Payment.findOneAndUpdate(
+        { booking: booking._id, user: booking.user },
+        {
+          status: 'succeeded',
+          paidAt: new Date(),
+        }
+      );
+    } catch (e) {
+      console.error('mockPaymentSuccess Payment update failed:', e.message);
+    }
+    res.json({ success: true, message: 'Booking marked as paid (mock) awaiting owner approval', booking });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -166,8 +181,10 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
         const booking = await Booking.findById(bookingId);
         if (booking) {
           booking.paymentStatus = 'paid';
-          booking.status = 'confirmed';
-          booking.paidAt = new Date();
+          // Leave status as 'pending' for owner approval
+          if (booking.status === 'pending') {
+            booking.paidAt = new Date();
+          }
           await booking.save();
           await Payment.findOneAndUpdate(
             { booking: booking._id },
@@ -177,7 +194,7 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
               stripePaymentIntentId: session.payment_intent || undefined,
             }
           );
-          console.log('Booking marked as paid via Stripe webhook:', bookingId);
+          console.log('Booking payment captured; awaiting owner approval:', bookingId);
         } else {
           console.error('Booking not found for webhook bookingId:', bookingId);
         }
