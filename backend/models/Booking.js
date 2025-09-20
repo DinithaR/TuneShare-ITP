@@ -13,10 +13,19 @@ const instrumentSchema = new mongoose.Schema({
     price: {type: Number, required: true},
     paymentStatus: {type: String, enum: ["pending", "paid"], default: "pending"},
     paymentIntentId: {type: String},
+    stripeSessionId: { type: String },
     commission: {type: Number},
     ownerPayout: {type: Number},
-    paidAt: {type: Date}
+    paidAt: {type: Date},
+    lastWebhookEventId: { type: String },
+    lastWebhookAt: { type: Date }
 },{timestamps: true})
+
+// Helpful indexes for dashboards and webhook lookups
+instrumentSchema.index({ owner: 1, status: 1, paymentStatus: 1 });
+instrumentSchema.index({ paymentIntentId: 1 });
+instrumentSchema.index({ lastWebhookEventId: 1 });
+instrumentSchema.index({ stripeSessionId: 1 });
 
 const Booking = mongoose.model('Booking', instrumentSchema)
 

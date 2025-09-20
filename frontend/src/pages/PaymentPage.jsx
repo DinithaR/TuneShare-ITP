@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useAppContext } from '../context/AppContext';
 
 const PaymentPage = () => {
   const location = useLocation();
@@ -8,12 +8,51 @@ const PaymentPage = () => {
   const params = new URLSearchParams(location.search);
   const isSuccess = params.get('success') === 'true';
   const isCanceled = params.get('canceled') === 'true';
+  const bookingId = params.get('bookingId');
+  const { axios } = useAppContext();
+  const [status, setStatus] = useState({ loading: false, paid: false, confirmed: false });
+  const [elapsed, setElapsed] = useState(0);
+  const pollRef = useRef(null);
 
+  // Poll a single booking to see when webhook updates paymentStatus
   useEffect(() => {
-    // Redirect to bookings after a delay, and force refetch
+    if (!isSuccess || !bookingId) return;
+    let attempts = 0;
+    setStatus(s => ({ ...s, loading: true }));
+    pollRef.current = setInterval(async () => {
+      attempts += 1;
+      setElapsed(e => e + 2);
+      try {
+        const { data } = await axios.get(`/api/bookings/one/${bookingId}`);
+        if (data.success && data.booking) {
+          const b = data.booking;
+          const paid = b.paymentStatus === 'paid';
+          const confirmed = b.status === 'confirmed';
+          setStatus({ loading: !paid, paid, confirmed });
+          if (paid || attempts >= 10) { // stop after success or ~20s
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            // Redirect a bit sooner once paid detected
+            setTimeout(() => navigate('/my-bookings', { state: { refetch: true } }), 1500);
+          }
+        }
+      } catch (e) {
+        // ignore transient errors
+      }
+    }, 2000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isSuccess, bookingId, axios, navigate]);
+
+  // Fallback redirect if webhook never updates (prevent user stuck)
+  useEffect(() => {
     if (isSuccess) {
-      const timer = setTimeout(() => navigate('/my-bookings', { state: { refetch: true } }), 4000);
-      return () => clearTimeout(timer);
+      const fallback = setTimeout(() => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        navigate('/my-bookings', { state: { refetch: true } });
+      }, 25000); // 25s fallback
+      return () => clearTimeout(fallback);
     }
   }, [isSuccess, navigate]);
 
@@ -22,9 +61,19 @@ const PaymentPage = () => {
       <div className="w-full max-w-md p-6 bg-white rounded shadow text-center">
         {isSuccess ? (
           <>
-            <h2 className="text-2xl font-bold mb-4 text-green-600">Payment Successful!</h2>
-            <p>Your payment was received and your booking is now confirmed.</p>
-            <p className="mt-4 text-gray-500">Redirecting to your bookings...</p>
+            <h2 className="text-2xl font-bold mb-4 text-green-600">Payment Successful</h2>
+            {!status.paid ? (
+              <p>Waiting for payment confirmation (webhook)…</p>
+            ) : status.confirmed ? (
+              <p>Your booking is confirmed.</p>
+            ) : (
+              <p>Payment recorded. Booking is awaiting owner approval.</p>
+            )}
+            <div className="mt-4 text-sm text-gray-500">
+              {!status.paid && <p>Polling for update… {elapsed}s</p>}
+              {status.paid && !status.confirmed && <p>Owner will review shortly.</p>}
+              <p>You will be redirected automatically.</p>
+            </div>
           </>
         ) : isCanceled ? (
           <>

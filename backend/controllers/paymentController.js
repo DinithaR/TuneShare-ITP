@@ -10,24 +10,42 @@ export const createCheckoutSession = async (req, res) => {
   try {
     const { bookingId } = req.body;
     console.log('createCheckoutSession called with bookingId:', bookingId);
+    if (!process.env.STRIPE_SECRET_KEY) {
+      console.error('Stripe secret key missing in environment.');
+      return res.status(500).json({ success: false, code: 'STRIPE_KEY_MISSING', message: 'Payment configuration error. Contact support.' });
+    }
+    if (!bookingId) {
+      return res.status(400).json({ success: false, code: 'NO_BOOKING_ID', message: 'Booking ID is required.' });
+    }
     const booking = await Booking.findById(bookingId).populate('instrument');
     if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found' });
+      return res.status(404).json({ success: false, code: 'BOOKING_NOT_FOUND', message: 'Booking not found' });
     }
     if (!booking.instrument) {
-      return res.status(400).json({ success: false, message: 'Instrument not found for this booking.' });
+      return res.status(400).json({ success: false, code: 'INSTRUMENT_NOT_FOUND', message: 'Instrument not found for this booking.' });
     }
     if (booking.paymentStatus === 'paid') {
-      return res.json({ success: false, message: 'Already paid' });
+      return res.json({ success: false, code: 'ALREADY_PAID', message: 'Already paid' });
+    }
+    if (!booking.price || booking.price <= 0) {
+      console.error('Invalid booking price for booking', bookingId, 'price:', booking.price);
+      return res.status(400).json({ success: false, code: 'INVALID_PRICE', message: 'Invalid booking price.' });
+    }
+
+    const currency = (process.env.STRIPE_CURRENCY || 'lkr').toLowerCase();
+    if (!/^[a-z]{3}$/.test(currency)) {
+      return res.status(500).json({ success: false, code: 'INVALID_CURRENCY', message: 'Configured currency invalid.' });
     }
 
     // Create Stripe Checkout session
-    const session = await stripe.checkout.sessions.create({
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
-            currency: 'lkr',
+            currency,
             product_data: {
               name: `Instrument rental: ${booking.instrument.brand || ''} ${booking.instrument.model || ''}`,
               description: booking.instrument.description || '',
@@ -44,11 +62,16 @@ export const createCheckoutSession = async (req, res) => {
       },
       success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?success=true&bookingId=${booking._id}`,
       cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?canceled=true&bookingId=${booking._id}`,
-    });
+      });
+    } catch (stripeErr) {
+      console.error('Stripe session creation failed:', stripeErr?.message, stripeErr?.code);
+      return res.status(500).json({ success: false, code: stripeErr?.code || 'STRIPE_SESSION_ERROR', message: stripeErr?.message || 'Payment session creation failed.' });
+    }
 
-    // Save session/payment draft
-    booking.paymentIntentId = session.payment_intent || null;
-    await booking.save();
+  // Save session/payment draft
+  booking.paymentIntentId = session.payment_intent || null;
+  booking.stripeSessionId = session.id;
+  await booking.save();
 
     try {
       const commission = Math.round(booking.price * 0.10);
@@ -73,10 +96,14 @@ export const createCheckoutSession = async (req, res) => {
       console.error('Failed to persist payment draft:', persistErr);
     }
 
+    if (!session?.url) {
+      console.error('Stripe session created but no URL returned. Session:', session?.id);
+      return res.status(500).json({ success: false, code: 'NO_SESSION_URL', message: 'Payment session not available.' });
+    }
     res.json({ success: true, url: session.url });
   } catch (error) {
     console.error('createCheckoutSession error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, code: 'UNEXPECTED', message: error.message || 'Unexpected error' });
   }
 };
 // (moved imports & stripe init to top)
@@ -162,8 +189,8 @@ export const mockPaymentSuccess = async (req, res) => {
   }
 };
 
-// Stripe webhook endpoint
-export const stripeWebhook = express.raw({ type: 'application/json' }, async (req, res) => {
+// Stripe webhook endpoint (raw body applied at app level)
+export const stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
   try {
@@ -172,10 +199,13 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
     console.error('Stripe webhook signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+  console.log('[Stripe Webhook] Received event:', event.type, 'id:', event.id);
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    console.log('[Stripe Webhook] checkout.session.completed session.id:', session.id, 'payment_intent:', session.payment_intent);
     const bookingId = session.metadata && session.metadata.bookingId;
+    console.log('[Stripe Webhook] Extracted bookingId:', bookingId);
     if (bookingId) {
       try {
         const booking = await Booking.findById(bookingId);
@@ -185,7 +215,10 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
           if (booking.status === 'pending') {
             booking.paidAt = new Date();
           }
+          booking.lastWebhookEventId = event.id;
+            booking.lastWebhookAt = new Date();
           await booking.save();
+          console.log('[Stripe Webhook] Booking updated paymentStatus=paid, paidAt set? ', !!booking.paidAt);
           await Payment.findOneAndUpdate(
             { booking: booking._id },
             {
@@ -195,6 +228,14 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
             }
           );
           console.log('Booking payment captured; awaiting owner approval:', bookingId);
+          if (process.env.STORE_WEBHOOK_EVENT_LOG === 'true') {
+            console.log('[Stripe Webhook] Event dump (truncated):', JSON.stringify({
+              id: event.id,
+              type: event.type,
+              created: event.created,
+              livemode: event.livemode
+            }));
+          }
         } else {
           console.error('Booking not found for webhook bookingId:', bookingId);
         }
@@ -204,7 +245,7 @@ export const stripeWebhook = express.raw({ type: 'application/json' }, async (re
     }
   }
   res.json({ received: true });
-});
+};
 
 // GET /api/payments/mine - list current user's payments
 export const listMyPayments = async (req, res) => {
@@ -226,6 +267,71 @@ export const listAllPayments = async (req, res) => {
       .populate({ path: 'booking', populate: { path: 'instrument', select: 'brand model' } })
       .sort({ createdAt: -1 });
     res.json({ success: true, payments });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/payments/debug/:bookingId (admin) - raw booking + payment state
+export const debugPayment = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId required' });
+    const booking = await Booking.findById(bookingId).lean();
+    const payment = await Payment.findOne({ booking: bookingId }).lean();
+    res.json({ success: true, booking, payment, env: {
+      hasStripeSecret: !!process.env.STRIPE_SECRET_KEY,
+      hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+      frontendUrl: process.env.FRONTEND_URL
+    }});
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/payments/sync/:bookingId - reconcile payment if webhook missed
+export const syncPaymentStatus = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId required' });
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    // Authorization: only booking user, owner, or admin
+    const requester = req.user;
+    if (requester.role !== 'admin' && requester._id.toString() !== booking.user.toString() && requester._id.toString() !== booking.owner.toString()) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    if (booking.paymentStatus === 'paid') {
+      return res.json({ success: true, booking, message: 'Already marked paid' });
+    }
+    if (!booking.stripeSessionId) {
+      return res.status(400).json({ success: false, message: 'No Stripe session recorded for this booking.' });
+    }
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(500).json({ success: false, message: 'Stripe not configured' });
+    }
+    // Retrieve session from Stripe
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(booking.stripeSessionId);
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Failed to retrieve Stripe session', error: e.message });
+    }
+    const paymentStatus = session.payment_status; // can be paid / unpaid
+    if (paymentStatus === 'paid') {
+      booking.paymentStatus = 'paid';
+      if (booking.status === 'pending') booking.paidAt = new Date();
+      booking.lastWebhookEventId = booking.lastWebhookEventId || `manual-sync-${Date.now()}`;
+      booking.lastWebhookAt = new Date();
+      await booking.save();
+      await Payment.findOneAndUpdate(
+        { booking: booking._id },
+        { status: 'succeeded', paidAt: new Date(), stripePaymentIntentId: session.payment_intent || undefined },
+        { new: true }
+      );
+      return res.json({ success: true, booking, message: 'Payment reconciled from Stripe session.' });
+    }
+    return res.json({ success: false, message: 'Stripe session not paid yet', sessionStatus: paymentStatus, booking });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
