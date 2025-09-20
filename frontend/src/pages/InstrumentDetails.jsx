@@ -4,6 +4,7 @@ import { assets } from '../assets/assets'
 import Loader from '../components/Loader'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
+// import PaymentForm from '../components/PaymentForm'
 
 const InstrumentDetails = () => {
   
@@ -11,6 +12,8 @@ const InstrumentDetails = () => {
   const {instruments, axios, pickupDate, setPickupDate, returnDate, setReturnDate} = useAppContext()
   const navigate = useNavigate()
   const [instrument, setInstrument] = useState(null)
+  // const [clientSecret, setClientSecret] = useState(null)
+  // const [bookingId, setBookingId] = useState(null)
   const currency = import.meta.env.VITE_CURRENCY
 
   const handleSubmit = async (e) => {
@@ -39,10 +42,10 @@ const InstrumentDetails = () => {
         pickupDate, 
         returnDate
       });
-
-      console.log('Response received:', data);
-
-      if(data.success){
+      if(data.success && data.booking) {
+        toast.success('Booking created!')
+        navigate('/my-bookings')
+      } else if(data.success) {
         toast.success(data.message)
         navigate('/my-bookings')
       } else {
@@ -132,58 +135,51 @@ const InstrumentDetails = () => {
         {/* Right: Booking Form */}
         <div className='lg:sticky lg:top-20 lg:h-fit'>
           <form onSubmit={handleSubmit} className='bg-white shadow-lg rounded-xl p-6 space-y-6 border border-borderColor'>
-            
-            <div className='flex items-center justify-between'>
-              <span className='text-2xl text-primary-dull font-semibold'>
-                {currency}{instrument.pricePerDay || 0}
-              </span>
-              <span className='text-base text-gray-400 font-normal'>per day</span>
-            </div>
-
-            <hr className='border-borderColor'/>
-
-            <div className='space-y-4'>
-              <div className='flex flex-col gap-2'>
-                <label htmlFor="pickup-date" className='text-sm font-medium text-primary-dull'>
-                  Pickup Date
-                </label>
-                <input 
-                  value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                  type="date" 
-                  className='w-full border border-borderColor px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary' 
-                  required 
-                  id='pickup-date' 
-                  min={new Date().toISOString().split('T')[0]} 
-                />
+              <div className='flex items-center justify-between'>
+                <span className='text-2xl text-primary-dull font-semibold'>
+                  {currency}{instrument.pricePerDay || 0}
+                </span>
+                <span className='text-base text-gray-400 font-normal'>per day</span>
               </div>
-
-              <div className='flex flex-col gap-2'>
-                <label htmlFor="return-date" className='text-sm font-medium text-primary-dull'>
-                  Return Date
-                </label>
-                <input 
-                  value={returnDate} onChange={(e) => setReturnDate(e.target.value)}
-                  type="date" 
-                  className='w-full border border-borderColor px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary' 
-                  required 
-                  id='return-date' 
-                  min={pickupDate || new Date().toISOString().split('T')[0]} 
-                />
+              <hr className='border-borderColor'/>
+              <div className='space-y-4'>
+                <div className='flex flex-col gap-2'>
+                  <label htmlFor="pickup-date" className='text-sm font-medium text-primary-dull'>
+                    Pickup Date
+                  </label>
+                  <input 
+                    value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                    type="date" 
+                    className='w-full border border-borderColor px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary' 
+                    required 
+                    id='pickup-date' 
+                    min={new Date().toISOString().split('T')[0]} 
+                  />
+                </div>
+                <div className='flex flex-col gap-2'>
+                  <label htmlFor="return-date" className='text-sm font-medium text-primary-dull'>
+                    Return Date
+                  </label>
+                  <input 
+                    value={returnDate} onChange={(e) => setReturnDate(e.target.value)}
+                    type="date" 
+                    className='w-full border border-borderColor px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary' 
+                    required 
+                    id='return-date' 
+                    min={pickupDate || new Date().toISOString().split('T')[0]} 
+                  />
+                </div>
               </div>
-            </div>
-
-            <button 
-              type="submit"
-              className='w-full bg-primary hover:bg-primary-dull transition-colors duration-200 py-3 font-medium text-white rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
-            >
-              Book Now
-            </button>
-            
-            <p className='text-center text-sm text-gray-500'>
-              No credit card required to reserve
-            </p>
-
-          </form>
+              <button 
+                type="submit"
+                className='w-full bg-primary hover:bg-primary-dull transition-colors duration-200 py-3 font-medium text-white rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
+              >
+                Book Now
+              </button>
+              <p className='text-center text-sm text-gray-500'>
+                No credit card required to reserve
+              </p>
+            </form>
         </div>
       </div>
       

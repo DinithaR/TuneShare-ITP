@@ -1,5 +1,5 @@
 import express from "express";
-import { protect } from "../middleware/auth.js";
+import { protect, isOwner } from "../middleware/auth.js";
 import { 
   createBooking, 
   getOwnerBookings, 
@@ -18,7 +18,7 @@ bookingRouter.put("/user/:id", protect, updateUserBooking);
 bookingRouter.delete("/user/:id", protect, deleteUserBooking);
 
 // Owner routes  
-bookingRouter.get("/owner", protect, getOwnerBookings);
-bookingRouter.post("/change-status", protect, changeBookingStatus);
+bookingRouter.get("/owner", protect, isOwner, getOwnerBookings);
+bookingRouter.post("/change-status", protect, isOwner, changeBookingStatus);
 
 export default bookingRouter;

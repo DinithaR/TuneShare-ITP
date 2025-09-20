@@ -3,11 +3,13 @@ import { assets } from '../assets/assets'
 import Title from '../components/Title'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
+import { useNavigate } from 'react-router-dom'
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([])
   const [editId, setEditId] = useState(null)
   const [editData, setEditData] = useState({ pickupDate: '', returnDate: '' })
+  const navigate = useNavigate();
   const currency = import.meta.env.VITE_CURRENCY
   const { axios } = useAppContext()
 
@@ -24,8 +26,16 @@ const MyBookings = () => {
     }
   };
 
+  const location = useNavigate && window.history.state && window.history.state.usr ? window.history.state.usr : {};
   useEffect(() => {
-    fetchMyBookings();
+    // Refetch if redirected from payment success
+    if (location && location.refetch) {
+      fetchMyBookings();
+      // Optionally, clear the refetch flag
+      window.history.replaceState({}, document.title);
+    } else {
+      fetchMyBookings();
+    }
   }, []);
 
   const handleDelete = async (id) => {
@@ -75,6 +85,19 @@ const MyBookings = () => {
     setEditData({ pickupDate: '', returnDate: '' });
   };
 
+  const handlePayNow = async (bookingId) => {
+    try {
+      const { data } = await axios.post('/api/payments/create-checkout-session', { bookingId });
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.message || 'Could not start payment');
+      }
+    } catch (error) {
+      toast.error('Could not start payment');
+    }
+  }
+
   return (
     <div className='px-6 md:px-16 lg:px-32 2xl:px-48 mt-16 text-sm max-w-7xl'>
       <Title title='My Booking' subtitle='View and manage your all bookings' align='left' />
@@ -96,7 +119,25 @@ const MyBookings = () => {
               <div className='md:col-span-2'>
                 <div className='flex items-center gap-2'>
                   <p className='px-3 py-1.5 rounded' style={{ backgroundColor: 'var(--color-light)' }}>Booking #{index+1}</p>
-                  <p className={`px-3 py-1 text-xs rounded-full ${booking.status === 'confirmed' ? 'bg-green-400/15 text-green-600' : 'bg-red-400/15 text-red-600'}`}>{booking.status}</p>
+                  {/* Status badge with more nuanced colors */}
+                  {(() => {
+                    let badgeText = booking.status;
+                    let badgeClasses = 'px-3 py-1 text-xs rounded-full ';
+                    if (booking.status === 'confirmed') {
+                      badgeClasses += 'bg-green-400/15 text-green-600';
+                    } else if (booking.status === 'cancelled') {
+                      badgeClasses += 'bg-red-400/15 text-red-600';
+                    } else {
+                      // pending
+                      if (booking.paymentStatus === 'paid') {
+                        badgeText = 'awaiting-approval';
+                        badgeClasses += 'bg-amber-400/15 text-amber-600';
+                      } else {
+                        badgeClasses += 'bg-gray-400/15 text-gray-600';
+                      }
+                    }
+                    return <p className={badgeClasses}>{badgeText}</p>;
+                  })()}
                 </div>
                 {editId === booking._id ? (
                   <div className='mt-3 flex flex-col gap-2'>
@@ -150,11 +191,45 @@ const MyBookings = () => {
               </div>
               {/* Price */}
               <div className='md:col-span-1 flex flex-col justify-between gap-6'>
-                <div className='text-sm text-gray-500 text-right'>
+                <div className='text-sm text-gray-500 text-right space-y-1'>
                   <p>Total Price</p>
                   <h1 className='text-2xl font-semibold' style={{ color: 'var(--color-primary)' }}>{currency}{booking.price}</h1>
                   <p>Booked on {booking.createdAt.split('T')[0]}</p>
+                  {booking.paymentStatus === 'paid' && (
+                    <div className='mt-2 text-xs text-green-600 space-y-0.5'>
+                      <p className='font-medium'>Payment: Paid</p>
+                      {booking.status !== 'confirmed' && (
+                        <p className='text-amber-600'>Awaiting owner approval</p>
+                      )}
+                      {booking.commission != null && (
+                        <p className='text-gray-500'>Commission: {currency}{booking.commission}</p>
+                      )}
+                      {booking.ownerPayout != null && (
+                        <p className='text-gray-500'>Owner Payout: {currency}{booking.ownerPayout}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {/* Show Pay Now if not paid, else show Cancel if paid and not confirmed */}
+                {booking.paymentStatus !== 'paid' ? (
+                  <div className='mt-4'>
+                    <button
+                      onClick={() => handlePayNow(booking._id)}
+                      className='w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mt-2'
+                    >
+                      Pay Now
+                    </button>
+                  </div>
+                ) : booking.status !== 'confirmed' ? (
+                  <div className='mt-4'>
+                    <button
+                      onClick={() => handleDelete(booking._id)}
+                      className='w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg mt-2'
+                    >
+                      Cancel Booking
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))

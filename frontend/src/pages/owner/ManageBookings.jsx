@@ -4,7 +4,7 @@ import { useAppContext } from '../../context/AppContext'
 import toast from 'react-hot-toast'
 
 const ManageBookings = () => {
-  const {axios, currency} = useAppContext()
+  const {axios, currency, user} = useAppContext()
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -14,6 +14,7 @@ const ManageBookings = () => {
       const {data} = await axios.get('/api/bookings/owner')
       if (data.success) {
         setBookings(data.bookings)
+        // Optionally we could store scope (data.scope) if backend provided it
       } else {
         toast.error(data.message)
       }
@@ -114,20 +115,34 @@ const ManageBookings = () => {
                   </td>
 
                   <td className='p-3 max-md:hidden'>
-                    <span className='bg-light px-3 py-1 rounded-full text-xs'>
-                      Offline
-                    </span>
+                    {(() => {
+                      let label = 'Unpaid';
+                      let cls = 'bg-red-100 text-red-600';
+                      if (booking.paymentStatus === 'paid') {
+                        if (booking.status === 'confirmed') {
+                          label = 'Paid';
+                          cls = 'bg-green-100 text-green-600';
+                        } else {
+                          label = 'Awaiting Approval';
+                          cls = 'bg-amber-100 text-amber-600';
+                        }
+                      }
+                      return <span className={`px-3 py-1 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
+                    })()}
                   </td>
 
                   <td className='p-3'>
                     {booking.status === 'pending' ? (
-                      <select 
-                        onChange={(e) => changeBookingStatus(booking._id, e.target.value)} 
-                        value={booking.status} 
+                      <select
+                        onChange={(e) => changeBookingStatus(booking._id, e.target.value)}
+                        value={booking.status}
                         className='px-2 py-1.5 mt-1 text-primary-dull border border-borderColor rounded-md outline-none focus:ring-2 focus:ring-primary focus:border-primary'
                       >
                         <option value="pending">Pending</option>
-                        <option value="confirmed">Confirmed</option>
+                        {/* Disable confirm if unpaid */}
+                        <option value="confirmed" disabled={booking.paymentStatus !== 'paid'}>
+                          Confirmed {booking.paymentStatus !== 'paid' ? '(pay first)' : ''}
+                        </option>
                         <option value="cancelled">Cancelled</option>
                       </select>
                     ) : (

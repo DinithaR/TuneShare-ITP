@@ -4,18 +4,20 @@ import Instrument from "../models/Instrument.js";
 // API to get owner bookings
 export const getOwnerBookings = async (req, res) => {
     try {
-        const { _id, role } = req.user;
+        const { _id, role } = req.user; // role validated by isOwner
 
-        if (role !== 'owner') {
-            return res.json({ success: false, message: "Unauthorized" });
+        let query = { owner: _id };
+        if (role === 'admin') {
+            // Admin can see all bookings
+            query = {};
         }
 
-        const bookings = await Booking.find({ owner: _id })
+        const bookings = await Booking.find(query)
             .populate('instrument')
             .populate('user', 'name email')
             .sort({ createdAt: -1 });
 
-        res.json({ success: true, bookings });
+        res.json({ success: true, bookings, scope: role === 'admin' ? 'all' : 'owner' });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
@@ -27,10 +29,7 @@ export const changeBookingStatus = async (req, res) => {
     try {
         const { _id, role } = req.user;
         const { bookingId, status } = req.body;
-
-        if (role !== 'owner') {
-            return res.json({ success: false, message: "Unauthorized" });
-        }
+        // Role validation handled by isOwner middleware now (owner or admin)
 
         // Valid status values
         const validStatuses = ['pending', 'confirmed', 'cancelled'];
@@ -45,8 +44,13 @@ export const changeBookingStatus = async (req, res) => {
         }
 
         // Check if booking belongs to this owner
-        if (booking.owner.toString() !== _id.toString()) {
+        if (role !== 'admin' && booking.owner.toString() !== _id.toString()) {
             return res.json({ success: false, message: "Unauthorized" });
+        }
+
+        // Prevent confirming unless payment completed
+        if (status === 'confirmed' && booking.paymentStatus !== 'paid') {
+            return res.json({ success: false, message: 'Cannot confirm before payment is completed.' });
         }
 
         booking.status = status;
@@ -138,15 +142,20 @@ export const updateUserBooking = async (req, res) => {
 
 // Delete a user's booking
 export const deleteUserBooking = async (req, res) => {
-  try {
-    const { _id } = req.user;
-    const { id } = req.params;
+    try {
+        const { _id } = req.user;
+        const { id } = req.params;
 
-    const booking = await Booking.findOneAndDelete({ _id: id, user: _id });
-    if (!booking) return res.json({ success: false, message: "Booking not found" });
+        const booking = await Booking.findOne({ _id: id, user: _id });
+        if (!booking) return res.json({ success: false, message: "Booking not found" });
 
-    res.json({ success: true, message: "Booking deleted" });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
-  }
+        if (booking.status === 'confirmed') {
+            return res.json({ success: false, message: "Cannot cancel a confirmed booking." });
+        }
+
+        await booking.deleteOne();
+        res.json({ success: true, message: "Booking deleted" });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
 };
