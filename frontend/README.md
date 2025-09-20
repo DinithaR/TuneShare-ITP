@@ -1,12 +1,85 @@
-# React + Vite
+# TuneShare Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the React + Vite frontend for the TuneShare instrument rental platform.
 
-Currently, two official plugins are available:
+## Key Features
+- Browse instruments and view details
+- Create and manage bookings
+- Stripe Checkout payment integration (LKR)
+- 10% platform commission, payout calculated for owner
+- Webhook-based payment confirmation
+- Post-payment cancel allowed until owner confirms
+- Admin dashboard & payments listing
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Payment Flow
+1. User creates a booking (status: `pending`, paymentStatus: `pending`).
+2. User clicks "Pay Now" → backend creates Stripe Checkout Session → redirects to Stripe.
+3. On success, Stripe redirects to `/payment?success=true&bookingId=...`.
+4. Stripe sends `checkout.session.completed` webhook → backend marks booking `paymentStatus='paid'` and `status='confirmed'` (current logic auto-confirms; adjust if manual confirm needed).
+5. Frontend refreshes bookings and shows paid state. If you want owner confirmation before auto-confirm, remove the auto-confirm line in `stripeWebhook`.
 
-## Expanding the ESLint configuration
+## New Backend Payment Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/payments/create-checkout-session` | Create Stripe Checkout session for a booking |
+| POST | `/api/payments/create-intent` | (Legacy) Create PaymentIntent (unused now) |
+| POST | `/api/payments/mock-success` | Mark booking as paid (testing) |
+| POST | `/api/payments/webhook` | Stripe webhook receiver (raw body) |
+| GET | `/api/payments/mine` | List current user's payment records |
+| GET | `/api/payments/admin` | List all payments (admin only) |
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Data Models (Relevant)
+### Booking (added fields)
+```
+paymentStatus: 'pending' | 'paid'
+paymentIntentId: String
+commission: Number
+ownerPayout: Number
+paidAt: Date
+```
+### Payment
+```
+booking, user, amount (cents), displayAmount, currency,
+commission, ownerPayout, stripeSessionId, stripePaymentIntentId,
+status: 'pending' | 'succeeded' | 'failed', paidAt, rawSession
+```
+
+## Admin Payments Page
+Route: `/admin/payments` (requires user role = `admin`).
+Shows table of all platform transactions.
+
+## Environment Variables (Backend)
+```
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+FRONTEND_URL=http://localhost:5173
+```
+
+## Frontend Env
+```
+VITE_API_BASE= (if using proxy / optional)
+VITE_CURRENCY=LKR
+```
+
+## Future Enhancements
+- Owner manual confirmation before status becomes `confirmed`
+- Refund / cancellation window logic
+- Payout scheduling and ledger
+- Filtering & export for payments
+
+## Development
+Run frontend:
+```
+npm run dev
+```
+Run backend (from backend folder):
+```
+npm run server
+```
+
+Stripe webhook forwarding (local):
+```
+stripe listen --forward-to localhost:3000/api/payments/webhook
+```
+
+Enjoy building with TuneShare!

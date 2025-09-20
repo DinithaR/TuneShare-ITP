@@ -138,15 +138,20 @@ export const updateUserBooking = async (req, res) => {
 
 // Delete a user's booking
 export const deleteUserBooking = async (req, res) => {
-  try {
-    const { _id } = req.user;
-    const { id } = req.params;
+    try {
+        const { _id } = req.user;
+        const { id } = req.params;
 
-    const booking = await Booking.findOneAndDelete({ _id: id, user: _id });
-    if (!booking) return res.json({ success: false, message: "Booking not found" });
+        const booking = await Booking.findOne({ _id: id, user: _id });
+        if (!booking) return res.json({ success: false, message: "Booking not found" });
 
-    res.json({ success: true, message: "Booking deleted" });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
-  }
+        if (booking.status === 'confirmed') {
+            return res.json({ success: false, message: "Cannot cancel a confirmed booking." });
+        }
+
+        await booking.deleteOne();
+        res.json({ success: true, message: "Booking deleted" });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
 };

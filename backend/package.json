@@ -19,7 +19,8 @@
     "imagekit": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.3",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "stripe": "^18.5.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
