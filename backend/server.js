@@ -10,7 +10,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 //Initialize Express App
 const app = express();
 
-// Stripe webhook must use raw body parser for signature verification
+// Stripe webhook must use raw body parser for signature verification BEFORE express.json()
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
 //Connect Database

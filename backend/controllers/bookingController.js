@@ -120,6 +120,25 @@ export const getUserBookings = async (req, res) => {
     }
 };
 
+// API: get single booking (user must own it, or be owner/admin of instrument)
+export const getBookingById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requester = req.user;
+        const booking = await Booking.findById(id).populate('instrument').populate('user', 'name email');
+        if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+        const ownsAsUser = booking.user._id.toString() === requester._id.toString();
+        const ownsAsOwner = booking.owner.toString() === requester._id.toString();
+        const isAdmin = requester.role === 'admin';
+        if (!ownsAsUser && !ownsAsOwner && !isAdmin) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+        res.json({ success: true, booking });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Update a user's booking
 export const updateUserBooking = async (req, res) => {
   try {

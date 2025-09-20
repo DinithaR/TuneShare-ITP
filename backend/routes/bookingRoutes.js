@@ -6,7 +6,8 @@ import {
   changeBookingStatus,
   getUserBookings,
   updateUserBooking,
-  deleteUserBooking
+  deleteUserBooking,
+  getBookingById
 } from "../controllers/bookingController.js";
 
 const bookingRouter = express.Router();
@@ -14,6 +15,7 @@ const bookingRouter = express.Router();
 // User routes
 bookingRouter.post("/create", protect, createBooking);
 bookingRouter.get("/user", protect, getUserBookings);
+bookingRouter.get("/one/:id", protect, getBookingById);
 bookingRouter.put("/user/:id", protect, updateUserBooking);
 bookingRouter.delete("/user/:id", protect, deleteUserBooking);
 
