@@ -1,5 +1,6 @@
 import Booking from "../models/Booking.js";
 import Instrument from "../models/Instrument.js";
+import mongoose from 'mongoose';
 
 // API to get owner bookings
 export const getOwnerBookings = async (req, res) => {
@@ -108,12 +109,98 @@ export const createBooking = async (req, res) => {
 export const getUserBookings = async (req, res) => {
     try {
         const { _id } = req.user;
+    const { q, page = 1, limit = 10, startDate, endDate, paymentStatus, status } = req.query;
+        // Booking status filter (supports single value or comma separated list)
+        if (status) {
+            const validStatuses = ['pending', 'confirmed', 'cancelled'];
+            const statuses = status.split(',').map(s => s.trim().toLowerCase()).filter(s => validStatuses.includes(s));
+            if (statuses.length === 1) {
+                baseMatch.status = statuses[0];
+            } else if (statuses.length > 1) {
+                baseMatch.status = { $in: statuses };
+            }
+        }
 
-        const bookings = await Booking.find({ user: _id })
-            .populate('instrument')
-            .sort({ createdAt: -1 });
+        const pageNum = Math.max(parseInt(page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
 
-        res.json({ success: true, bookings });
+        const baseMatch = { user: new mongoose.Types.ObjectId(_id) };
+
+        // Date range overlap filtering
+        if (startDate || endDate) {
+            const start = startDate ? new Date(startDate) : null;
+            const end = endDate ? new Date(endDate) : null;
+            if (start && end) {
+                baseMatch.$and = [
+                    { pickupDate: { $lte: end } },
+                    { returnDate: { $gte: start } }
+                ];
+            } else if (start) {
+                baseMatch.returnDate = { $gte: start };
+            } else if (end) {
+                baseMatch.pickupDate = { $lte: end };
+            }
+        }
+
+        if (paymentStatus && ['paid', 'pending'].includes(paymentStatus)) {
+            baseMatch.paymentStatus = paymentStatus;
+        }
+
+        if (!q) {
+            const [bookings, total] = await Promise.all([
+                Booking.find(baseMatch)
+                    .populate('instrument')
+                    .sort({ createdAt: -1 })
+                    .skip((pageNum - 1) * pageSize)
+                    .limit(pageSize),
+                Booking.countDocuments(baseMatch)
+            ]);
+            return res.json({
+                success: true,
+                bookings,
+                page: pageNum,
+                limit: pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize)
+            });
+        }
+
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'i');
+
+        const pipeline = [
+            { $match: baseMatch },
+            { $lookup: { from: 'instruments', localField: 'instrument', foreignField: '_id', as: 'instrument' } },
+            { $unwind: '$instrument' },
+            { $match: { $or: [
+                { 'instrument.brand': regex },
+                { 'instrument.model': regex },
+                { 'instrument.category': regex },
+                { 'instrument.location': regex },
+                { status: regex }
+            ]}},
+            { $sort: { createdAt: -1 } },
+            { $facet: {
+                data: [
+                    { $skip: (pageNum - 1) * pageSize },
+                    { $limit: pageSize }
+                ],
+                totalCount: [ { $count: 'count' } ]
+            }}
+        ];
+
+        const agg = await Booking.aggregate(pipeline);
+        const data = agg[0]?.data || [];
+        const total = agg[0]?.totalCount?.[0]?.count || 0;
+
+        res.json({
+            success: true,
+            bookings: data,
+            page: pageNum,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize)
+        });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });

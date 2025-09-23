@@ -7,22 +7,43 @@ import { useNavigate } from 'react-router-dom'
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([])
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [loading, setLoading] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editData, setEditData] = useState({ pickupDate: '', returnDate: '' })
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [paymentStatus, setPaymentStatus] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [status, setStatus] = useState('')
   const navigate = useNavigate();
   const currency = import.meta.env.VITE_CURRENCY
   const { axios } = useAppContext()
 
-  const fetchMyBookings = async () => {
+  const fetchMyBookings = async (query='') => {
     try {
-      const { data } = await axios.get('/api/bookings/user');
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (query) params.append('q', query)
+      params.append('page', page)
+      params.append('limit', 6)
+      if (paymentStatus) params.append('paymentStatus', paymentStatus)
+      if (startDate) params.append('startDate', startDate)
+  if (endDate) params.append('endDate', endDate)
+  if (status) params.append('status', status)
+      const { data } = await axios.get(`/api/bookings/user?${params.toString()}`);
       if (data.success) {
         setBookings(data.bookings);
+        if (data.totalPages) setTotalPages(data.totalPages)
       } else {
         setBookings([]);
       }
     } catch (error) {
       setBookings([]);
+    } finally {
+      setLoading(false)
     }
   };
 
@@ -37,6 +58,21 @@ const MyBookings = () => {
       fetchMyBookings();
     }
   }, []);
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Refetch when debounced search changes
+  useEffect(() => {
+    fetchMyBookings(debouncedSearch)
+  }, [debouncedSearch, page, paymentStatus, startDate, endDate, status])
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, paymentStatus, startDate, endDate, status])
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this booking?')) return;
@@ -102,8 +138,59 @@ const MyBookings = () => {
     <div className='px-6 md:px-16 lg:px-32 2xl:px-48 mt-16 text-sm max-w-7xl'>
       <Title title='My Booking' subtitle='View and manage your all bookings' align='left' />
       <div>
+        <div className='mt-6 flex flex-col md:flex-row md:items-end gap-3 flex-wrap'>
+          <input
+            type='text'
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search by instrument, location, status...'
+            className='w-full md:w-80 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-400'
+          />
+          {debouncedSearch && (
+            <button
+              onClick={() => { setSearch(''); setDebouncedSearch(''); }}
+              className='text-sm text-gray-500 hover:text-gray-700'
+            >Clear</button>
+          )}
+          <div className='flex gap-2 items-center'>
+            <div className='flex flex-col'>
+              <label className='text-xs text-gray-500'>Start Date</label>
+              <input type='date' value={startDate} onChange={e=>setStartDate(e.target.value)} className='border rounded px-2 py-1 text-sm'/>
+            </div>
+            <div className='flex flex-col'>
+              <label className='text-xs text-gray-500'>End Date</label>
+              <input type='date' value={endDate} onChange={e=>setEndDate(e.target.value)} className='border rounded px-2 py-1 text-sm'/>
+            </div>
+            <div className='flex flex-col'>
+              <label className='text-xs text-gray-500'>Payment</label>
+              <select value={paymentStatus} onChange={e=>setPaymentStatus(e.target.value)} className='border rounded px-2 py-1 text-sm'>
+                <option value=''>All</option>
+                <option value='paid'>Paid</option>
+                <option value='pending'>Pending</option>
+              </select>
+            </div>
+            <div className='flex flex-col'>
+              <label className='text-xs text-gray-500'>Status</label>
+              <select value={status} onChange={e=>setStatus(e.target.value)} className='border rounded px-2 py-1 text-sm'>
+                <option value=''>All</option>
+                <option value='pending'>Pending</option>
+                <option value='confirmed'>Confirmed</option>
+                <option value='cancelled'>Cancelled</option>
+              </select>
+            </div>
+            {(paymentStatus || startDate || endDate || status) && (
+              <button
+                onClick={()=>{ setPaymentStatus(''); setStartDate(''); setEndDate(''); setStatus(''); }}
+                className='text-xs text-gray-500 h-7 self-end mb-0.5 hover:text-gray-700'
+              >Reset Filters</button>
+            )}
+          </div>
+        </div>
+        {loading && (
+          <div className='text-gray-500 mt-6'>Loading bookings...</div>
+        )}
         {bookings.length === 0 ? (
-          <div className="text-center text-gray-500 py-20 text-lg">You have no bookings yet.</div>
+          <div className="text-center text-gray-500 py-20 text-lg">{debouncedSearch ? 'No bookings match your search.' : 'You have no bookings yet.'}</div>
         ) : (
           bookings.map((booking, index) => (
             <div key={booking._id} className='grid grid-cols-1 md:grid-cols-4 gap-6 p-6 border rounded-lg mt-5 first:mt-12' style={{ borderColor: 'var(--color-borderColor)' }}>
@@ -112,13 +199,13 @@ const MyBookings = () => {
                 <div className='rounded-md overflow-hidden mb-3'>
                   <img src={booking?.instrument?.image || ''} alt={booking?.instrument?.name || 'Instrument'} className='w-full h-auto aspect-video object-cover'/>
                 </div>
-                <p className='text-lg font-medium mt-2'>{booking?.instrument?.brand || ''} {booking?.instrument?.model || ''}</p>
-                <p className='text-gray-500'>{booking?.instrument?.category || ''} • {booking?.instrument?.location || ''}</p>
+                <p className='text-lg font-medium mt-2'>{highlight(`${booking?.instrument?.brand || ''} ${booking?.instrument?.model || ''}`, debouncedSearch)}</p>
+                <p className='text-gray-500'>{highlight(booking?.instrument?.category || '', debouncedSearch)} • {highlight(booking?.instrument?.location || '', debouncedSearch)}</p>
               </div>
               {/* Booking Info */}
               <div className='md:col-span-2'>
                 <div className='flex items-center gap-2'>
-                  <p className='px-3 py-1.5 rounded' style={{ backgroundColor: 'var(--color-light)' }}>Booking #{index+1}</p>
+                  <p className='px-3 py-1.5 rounded' style={{ backgroundColor: 'var(--color-light)' }}>Booking #{(page-1)*6 + index + 1}</p>
                   {/* Status badge with more nuanced colors */}
                   {(() => {
                     let badgeText = booking.status;
@@ -136,7 +223,7 @@ const MyBookings = () => {
                         badgeClasses += 'bg-gray-400/15 text-gray-600';
                       }
                     }
-                    return <p className={badgeClasses}>{badgeText}</p>;
+                    return <p className={badgeClasses}>{highlight(badgeText, debouncedSearch)}</p>;
                   })()}
                 </div>
                 {editId === booking._id ? (
@@ -234,9 +321,28 @@ const MyBookings = () => {
             </div>
           ))
         )}
+        {totalPages > 1 && (
+          <div className='flex flex-wrap gap-2 mt-10 justify-center'>
+            <button disabled={page===1} onClick={()=>setPage(p=>Math.max(1,p-1))} className={`px-3 py-1 rounded border text-sm ${page===1?'opacity-40 cursor-not-allowed':'hover:bg-pink-50'}`}>Prev</button>
+            {Array.from({length: totalPages}, (_,i)=>i+1).filter(p=> p===1 || p===totalPages || (p>=page-2 && p<=page+2)).map(p=> (
+              <button key={p} onClick={()=>setPage(p)} className={`px-3 py-1 rounded border text-sm ${p===page? 'bg-pink-500 text-white border-pink-500':'hover:bg-pink-50'}`}>{p}</button>
+            ))}
+            <button disabled={page===totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className={`px-3 py-1 rounded border text-sm ${page===totalPages?'opacity-40 cursor-not-allowed':'hover:bg-pink-50'}`}>Next</button>
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+function highlight(text, q){
+  if(!q) return text
+  try {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${escaped})`, 'ig')
+    const parts = String(text).split(regex)
+    return parts.map((part, i) => i % 2 === 1 ? <mark key={i} className='bg-yellow-200 px-0.5 rounded'>{part}</mark> : part)
+  } catch { return text }
 }
 
 export default MyBookings
