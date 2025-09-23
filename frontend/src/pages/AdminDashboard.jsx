@@ -74,6 +74,12 @@ const AdminDashboard = () => {
   const { axios, token } = useAppContext();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Reviews state
+  const [reviews, setReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [reviewsPages, setReviewsPages] = useState(1);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
   // Add missing state for instruments section
   const [instruments, setInstruments] = useState([]);
   const [loadingInstruments, setLoadingInstruments] = useState(true);
@@ -171,8 +177,43 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchUsers();
     fetchInstruments();
+    fetchReviews(1);
     // eslint-disable-next-line
   }, []);
+
+  const fetchReviews = async (page = 1) => {
+    try {
+      setLoadingReviews(true);
+      const { data } = await axios.get(`/api/reviews/admin/list?page=${page}&limit=20`);
+      if (data.success) {
+        setReviews(data.reviews);
+        setReviewsPage(data.page);
+        setReviewsPages(data.pages);
+        setReviewsTotal(data.total);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error('Failed to fetch reviews');
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  const handleDeleteReview = async (id) => {
+    if (!window.confirm('Delete this review?')) return;
+    try {
+      const { data } = await axios.delete(`/api/reviews/${id}`);
+      if (data.success) {
+        toast.success('Review deleted');
+        fetchReviews(reviewsPage);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error('Failed to delete review');
+    }
+  };
   return (
     <div className="px-2 md:px-8 py-8 max-w-7xl mx-auto">
       <h1 className="text-3xl font-extrabold mb-8 text-pink-600 tracking-tight">Admin Dashboard</h1>
@@ -391,6 +432,59 @@ const AdminDashboard = () => {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+        {/* Reviews Section */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+          <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-yellow-400 rounded-full"></span> Ratings & Reviews
+          </h2>
+          {loadingReviews ? (
+            <p className="text-gray-500">Loading reviews...</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm border-separate border-spacing-y-2">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-700">
+                      <th className="py-2 px-4 font-semibold">Instrument</th>
+                      <th className="py-2 px-4 font-semibold">User</th>
+                      <th className="py-2 px-4 font-semibold">Rating</th>
+                      <th className="py-2 px-4 font-semibold">Comment</th>
+                      <th className="py-2 px-4 font-semibold">Date</th>
+                      <th className="py-2 px-4 font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviews.map(r => (
+                      <tr key={r._id} className="bg-white shadow rounded-lg">
+                        <td className="py-2 px-4">
+                          {(r.instrument?.brand || '') + ' ' + (r.instrument?.model || '')}
+                          <div className="text-xs text-gray-500">{r.instrument?.category}</div>
+                        </td>
+                        <td className="py-2 px-4">
+                          <div className="font-medium">{r.user?.name}</div>
+                          <div className="text-xs text-gray-500">{r.user?.email}</div>
+                        </td>
+                        <td className="py-2 px-4">⭐ {r.rating}</td>
+                        <td className="py-2 px-4 max-w-md truncate" title={r.comment}>{r.comment}</td>
+                        <td className="py-2 px-4">{new Date(r.createdAt).toLocaleDateString()}</td>
+                        <td className="py-2 px-4">
+                          <button onClick={() => handleDeleteReview(r._id)} className="px-2 py-1 bg-red-500 text-white rounded text-xs shadow hover:bg-red-600">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {reviewsPages > 1 && (
+                <div className="flex items-center justify-end gap-2 mt-4">
+                  <button disabled={reviewsPage<=1} onClick={() => fetchReviews(reviewsPage-1)} className="px-3 py-1 border rounded disabled:opacity-50">Prev</button>
+                  <span className="text-sm text-gray-600">Page {reviewsPage} of {reviewsPages}</span>
+                  <button disabled={reviewsPage>=reviewsPages} onClick={() => fetchReviews(reviewsPage+1)} className="px-3 py-1 border rounded disabled:opacity-50">Next</button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

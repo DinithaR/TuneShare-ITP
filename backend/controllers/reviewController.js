@@ -99,3 +99,37 @@ export const deleteReview = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Admin: list reviews with optional filters and pagination
+export const adminListReviews = async (req, res) => {
+  try {
+    const { instrumentId, userId, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (instrumentId) filter.instrument = instrumentId;
+    if (userId) filter.user = userId;
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [items, total] = await Promise.all([
+      Review.find(filter)
+        .populate('user', 'name email')
+        .populate('instrument', 'brand model category')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Review.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      reviews: items,
+      page: pageNum,
+      pages: Math.ceil(total / limitNum),
+      total,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
