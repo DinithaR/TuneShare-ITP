@@ -23,6 +23,7 @@ export const AppProvider = ({ children }) => {
     const [returnDate, setReturnDate] = useState('');
     const [instruments, setInstruments] = useState([]);
     const [authLoading, setAuthLoading] = useState(true);
+    const [ratingsSummary, setRatingsSummary] = useState({});
 
     // Login
     const login = async (email, password) => {
@@ -115,9 +116,35 @@ export const AppProvider = ({ children }) => {
     const fetchInstruments = async () => {
         try {
             const { data } = await axios.get('/api/user/instruments');
-            data.success ? setInstruments(data.instruments) : toast.error(data.message);
+            if (data.success) {
+                // Merge ratings if available in state
+                const enriched = data.instruments.map((it) => {
+                    const r = ratingsSummary[it._id];
+                    return r ? { ...it, avgRating: r.avgRating, reviewCount: r.count } : it;
+                });
+                setInstruments(enriched);
+            } else {
+                toast.error(data.message);
+            }
         } catch (error) {
             toast.error(error.message);
+        }
+    };
+
+    // Fetch ratings summary
+    const fetchRatingsSummary = async () => {
+        try {
+            const { data } = await axios.get('/api/reviews/summary');
+            if (data.success) {
+                setRatingsSummary(data.summary || {});
+                // Also enrich currently loaded instruments
+                setInstruments((prev) => prev.map((it) => {
+                    const r = data.summary?.[it._id];
+                    return r ? { ...it, avgRating: r.avgRating, reviewCount: r.count } : it;
+                }));
+            }
+        } catch (error) {
+            // non-fatal
         }
     };
 
@@ -143,13 +170,15 @@ export const AppProvider = ({ children }) => {
         } else {
             setAuthLoading(false);
         }
-        fetchInstruments();
+        // Load ratings then instruments
+        fetchRatingsSummary().finally(() => fetchInstruments());
     }, []);
 
     const value = {
     navigate, currency, axios, user, setUser, token, setToken, role, setRole, isOwner, setIsOwner,
     showLogin, setShowLogin, logout, fetchUser, fetchInstruments, instruments, setInstruments,
-    pickupDate, setPickupDate, returnDate, setReturnDate, login, register, becomeOwner, authLoading
+    pickupDate, setPickupDate, returnDate, setReturnDate, login, register, becomeOwner, authLoading,
+    ratingsSummary, fetchRatingsSummary
     };
 
     return (

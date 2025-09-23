@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { assets } from '../assets/assets'
 import Loader from '../components/Loader'
@@ -9,9 +9,15 @@ import toast from 'react-hot-toast'
 const InstrumentDetails = () => {
   
   const {id} = useParams()
-  const {instruments, axios, pickupDate, setPickupDate, returnDate, setReturnDate} = useAppContext()
+  const {instruments, axios, pickupDate, setPickupDate, returnDate, setReturnDate, user} = useAppContext()
   const navigate = useNavigate()
   const [instrument, setInstrument] = useState(null)
+  const [reviews, setReviews] = useState([])
+  const [avgRating, setAvgRating] = useState(0)
+  const [reviewCount, setReviewCount] = useState(0)
+  const [myRating, setMyRating] = useState(0)
+  const [myComment, setMyComment] = useState('')
+  const [loadingReviews, setLoadingReviews] = useState(true)
   // const [clientSecret, setClientSecret] = useState(null)
   // const [bookingId, setBookingId] = useState(null)
   const currency = import.meta.env.VITE_CURRENCY
@@ -71,6 +77,61 @@ const InstrumentDetails = () => {
       navigate('/instruments')
     }
   }, [instruments, id, navigate])
+
+  // Fetch reviews
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoadingReviews(true)
+        const { data } = await axios.get(`/api/reviews/instrument/${id}`)
+        if (data.success) {
+          setReviews(data.reviews)
+          setAvgRating(data.stats.avgRating || 0)
+          setReviewCount(data.stats.count || 0)
+        }
+        // load my review if logged in
+        if (user) {
+          const my = await axios.get(`/api/reviews/instrument/${id}/me`)
+          if (my.data.success && my.data.review) {
+            setMyRating(my.data.review.rating)
+            setMyComment(my.data.review.comment || '')
+          }
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        setLoadingReviews(false)
+      }
+    }
+    if (id) load()
+  }, [id, user])
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault()
+    if (!myRating) return toast.error('Please select a rating')
+    try {
+      const { data } = await axios.post('/api/reviews/upsert', {
+        instrumentId: id,
+        rating: Number(myRating),
+        comment: myComment
+      })
+      if (data.success) {
+        toast.success('Review saved')
+        // refresh lists
+        setAvgRating(data.stats.avgRating || 0)
+        setReviewCount(data.stats.count || 0)
+        // Update or insert my review into list
+        setReviews((prev) => {
+          const rest = prev.filter(r => r.user?._id !== user?._id)
+          return [data.review, ...rest]
+        })
+      } else {
+        toast.error(data.message)
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message)
+    }
+  }
   
   return instrument ? (
     <div className='px-6 md:px-16 lg:px-24 xl:px-32 mt-16'>
@@ -89,7 +150,14 @@ const InstrumentDetails = () => {
               <h1 className='text-3xl font-bold text-gray-800'>
                 {instrument.brand || ''} {instrument.model || instrument.name || 'Instrument'}
               </h1>
-              <p className='text-gray-500 text-lg mt-2'>{instrument.category || 'Musical Instrument'}</p>
+              <div className='flex items-center gap-3 mt-2'>
+                <p className='text-gray-500 text-lg'>{instrument.category || 'Musical Instrument'}</p>
+                {reviewCount > 0 && (
+                  <span className='text-sm bg-yellow-100 text-yellow-700 px-2 py-1 rounded-md'>
+                    ⭐ {avgRating.toFixed(1)} ({reviewCount})
+                  </span>
+                )}
+              </div>
             </div>
             <hr className='border-borderColor my-6'/>
 
@@ -129,6 +197,46 @@ const InstrumentDetails = () => {
               </div>
             )}
 
+          </div>
+
+          {/* Reviews Section */}
+          <div className='mt-8'>
+            <h2 className='text-xl font-semibold mb-4 text-gray-800'>Ratings & Reviews</h2>
+            {user ? (
+              <form onSubmit={handleReviewSubmit} className='mb-6 p-4 border border-borderColor rounded-lg'>
+                <div className='flex items-center gap-3 mb-3'>
+                  <label className='text-sm text-gray-700'>Your rating:</label>
+                  <select value={myRating} onChange={(e)=> setMyRating(e.target.value)} className='border rounded px-2 py-1'>
+                    <option value={0}>Select</option>
+                    {[1,2,3,4,5].map(n=> <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <textarea value={myComment} onChange={(e)=> setMyComment(e.target.value)} placeholder='Share your experience…' className='w-full border border-borderColor rounded-lg p-2 mb-3' rows={3} />
+                <button className='bg-primary text-white px-4 py-2 rounded-lg'>Submit review</button>
+              </form>
+            ) : (
+              <p className='text-sm text-gray-500 mb-4'>Log in to leave a review.</p>
+            )}
+
+            {loadingReviews ? (
+              <p className='text-sm text-gray-500'>Loading reviews…</p>
+            ) : (
+              <div className='space-y-4'>
+                {reviews.length === 0 && <p className='text-sm text-gray-500'>No reviews yet.</p>}
+                {reviews.map((r)=> (
+                  <div key={r._id} className='border border-borderColor rounded-lg p-3'>
+                    <div className='flex items-center justify-between mb-1'>
+                      <div className='flex items-center gap-2'>
+                        <span className='font-medium'>{r.user?.name || 'User'}</span>
+                        <span className='text-yellow-600'>⭐ {r.rating}</span>
+                      </div>
+                      <span className='text-xs text-gray-400'>{new Date(r.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    {r.comment && <p className='text-sm text-gray-700'>{r.comment}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         
