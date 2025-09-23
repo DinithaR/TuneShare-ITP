@@ -1,6 +1,6 @@
 import express from 'express';
-import { protect } from '../middleware/auth.js';
-import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary } from '../controllers/reviewController.js';
+import { protect, isAdmin } from '../middleware/auth.js';
+import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary, adminListReviews } from '../controllers/reviewController.js';
 
 const reviewRouter = express.Router();
 
@@ -18,5 +18,8 @@ reviewRouter.post('/upsert', protect, upsertReview);
 
 // Auth-required: delete my review (or admin)
 reviewRouter.delete('/:id', protect, deleteReview);
+
+// Admin
+reviewRouter.get('/admin/list', protect, isAdmin, adminListReviews);
 
 export default reviewRouter;
