@@ -3,7 +3,7 @@ import { assets } from '../assets/assets'
 import Title from '../components/Title'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([])
@@ -18,6 +18,8 @@ const MyBookings = () => {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [status, setStatus] = useState('')
+  const [selectedBooking, setSelectedBooking] = useState(null)
+  const [showModal, setShowModal] = useState(false)
   const navigate = useNavigate();
   const currency = import.meta.env.VITE_CURRENCY
   const { axios } = useAppContext()
@@ -134,6 +136,16 @@ const MyBookings = () => {
     }
   }
 
+  const openBookingModal = (booking) => {
+    setSelectedBooking(booking)
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setSelectedBooking(null)
+  }
+
   return (
     <div className='px-6 md:px-16 lg:px-32 2xl:px-48 mt-16 text-sm max-w-7xl'>
       <Title title='My Booking' subtitle='View and manage your all bookings' align='left' />
@@ -193,7 +205,15 @@ const MyBookings = () => {
           <div className="text-center text-gray-500 py-20 text-lg">{debouncedSearch ? 'No bookings match your search.' : 'You have no bookings yet.'}</div>
         ) : (
           bookings.map((booking, index) => (
-            <div key={booking._id} className='grid grid-cols-1 md:grid-cols-4 gap-6 p-6 border rounded-lg mt-5 first:mt-12' style={{ borderColor: 'var(--color-borderColor)' }}>
+            <div
+              key={booking._id}
+              onClick={() => openBookingModal(booking)}
+              className='grid grid-cols-1 md:grid-cols-4 gap-6 p-6 border rounded-lg mt-5 first:mt-12 cursor-pointer hover:shadow-sm transition-shadow'
+              style={{ borderColor: 'var(--color-borderColor)' }}
+              role='button'
+              tabIndex={0}
+              onKeyDown={(e)=>{ if(e.key==='Enter') openBookingModal(booking) }}
+            >
               {/* Instrument Image + info */}
               <div className='md:col-span-1'>
                 <div className='rounded-md overflow-hidden mb-3'>
@@ -272,8 +292,8 @@ const MyBookings = () => {
                   </>
                 )}
                 <div className='flex gap-2 mt-4'>
-                  <button onClick={() => handleEditClick(booking)} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors'>Edit</button>
-                  <button onClick={() => handleDelete(booking._id)} className='px-3 py-1 bg-red-500 text-white rounded'>Delete</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(booking) }} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors'>Edit</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }} className='px-3 py-1 bg-red-500 text-white rounded'>Delete</button>
                 </div>
               </div>
               {/* Price */}
@@ -298,10 +318,10 @@ const MyBookings = () => {
                   )}
                 </div>
                 {/* Show Pay Now if not paid, else show Cancel if paid and not confirmed */}
-                {booking.paymentStatus !== 'paid' ? (
+        {booking.paymentStatus !== 'paid' ? (
                   <div className='mt-4'>
                     <button
-                      onClick={() => handlePayNow(booking._id)}
+          onClick={(e) => { e.stopPropagation(); handlePayNow(booking._id) }}
                       className='w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mt-2'
                     >
                       Pay Now
@@ -310,7 +330,7 @@ const MyBookings = () => {
                 ) : booking.status !== 'confirmed' ? (
                   <div className='mt-4'>
                     <button
-                      onClick={() => handleDelete(booking._id)}
+          onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }}
                       className='w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg mt-2'
                     >
                       Cancel Booking
@@ -331,6 +351,48 @@ const MyBookings = () => {
           </div>
         )}
       </div>
+      {showModal && selectedBooking && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center'>
+          <div className='absolute inset-0 bg-black/40 backdrop-blur-sm' onClick={closeModal}></div>
+          <div className='relative bg-white max-w-2xl w-full mx-4 rounded-lg shadow-xl p-6 animate-fadeIn border' style={{ borderColor: 'var(--color-borderColor)' }}>
+            <button onClick={closeModal} className='absolute top-3 right-3 text-gray-500 hover:text-gray-700' aria-label='Close'>✕</button>
+            <div className='flex flex-col md:flex-row gap-6'>
+              <div className='md:w-1/2'>
+                <div className='rounded-md overflow-hidden'>
+                  <img src={selectedBooking?.instrument?.image || ''} alt='' className='w-full h-auto object-cover aspect-video' />
+                </div>
+                <Link
+                  to={`/instrument-details/${selectedBooking?.instrument?._id}`}
+                  onClick={closeModal}
+                  className='mt-3 inline-block text-sm text-pink-600 hover:underline'
+                >View Instrument Details →</Link>
+              </div>
+              <div className='flex-1 space-y-4 text-sm'>
+                <div>
+                  <h2 className='text-xl font-semibold'>{selectedBooking?.instrument?.brand} {selectedBooking?.instrument?.model}</h2>
+                  <p className='text-gray-500'>{selectedBooking?.instrument?.category} • {selectedBooking?.instrument?.location}</p>
+                </div>
+                <div className='grid grid-cols-2 gap-4'>
+                  <Info label='Pickup Date' value={selectedBooking.pickupDate.split('T')[0]} />
+                  <Info label='Return Date' value={selectedBooking.returnDate.split('T')[0]} />
+                  <Info label='Status' value={selectedBooking.status} />
+                  <Info label='Payment' value={selectedBooking.paymentStatus} />
+                  <Info label='Price' value={`${currency}${selectedBooking.price}`} />
+                  <Info label='Booked On' value={selectedBooking.createdAt.split('T')[0]} />
+                  {selectedBooking.commission != null && <Info label='Commission' value={`${currency}${selectedBooking.commission}`} />}
+                  {selectedBooking.ownerPayout != null && <Info label='Owner Payout' value={`${currency}${selectedBooking.ownerPayout}`} />}
+                </div>
+                {selectedBooking.paymentStatus !== 'paid' && (
+                  <button
+                    onClick={() => { closeModal(); handlePayNow(selectedBooking._id); }}
+                    className='mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded'
+                  >Pay Now</button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -346,3 +408,13 @@ function highlight(text, q){
 }
 
 export default MyBookings
+
+// Small info display component inside modal
+function Info({ label, value }) {
+  return (
+    <div>
+      <p className='text-gray-500 text-xs uppercase tracking-wide'>{label}</p>
+      <p className='font-medium mt-0.5 break-words'>{value}</p>
+    </div>
+  )
+}
