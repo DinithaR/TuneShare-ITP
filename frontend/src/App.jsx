@@ -18,6 +18,7 @@ import { useAppContext } from './context/AppContext'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminPayments from './pages/AdminPayments'
 import Profile from './pages/Profile'
+import ChatBot from './components/ChatBot'
 
 
 const App = () => {
@@ -49,6 +50,7 @@ const App = () => {
       </Routes>
 
       {!isOwnerPath && <Footer />}
+      {!isOwnerPath && <ChatBot />}
     </>
   );
 };
