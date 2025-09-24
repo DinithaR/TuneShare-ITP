@@ -417,3 +417,210 @@ export const downloadPaymentReport = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to generate report' });
   }
 };
+
+// GET /api/payments/for-booking/:bookingId - fetch current user's payment for a booking
+export const getPaymentForBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId required' });
+    const payment = await Payment.findOne({ booking: bookingId, user: req.user._id })
+      .populate({ path: 'booking', populate: { path: 'instrument', select: 'brand model image location' } })
+      .lean();
+    if (!payment) return res.status(404).json({ success: false, message: 'Payment not found for this booking' });
+    return res.json({ success: true, payment });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/payments/receipt/:paymentId - download PDF receipt for the logged-in user
+export const downloadUserReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    if (!paymentId) return res.status(400).json({ success: false, message: 'paymentId required' });
+    const payment = await Payment.findById(paymentId)
+      .populate('user', 'name email')
+      .populate({ path: 'booking', populate: { path: 'instrument', select: 'brand model location' } });
+    if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
+    // Authorization: payment must belong to the requesting user
+    if (payment.user?._id?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    // Generate a polished, branded PDF receipt
+    const doc = new PDFDocument({ margin: 50 });
+    const filename = `receipt_${payment._id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  doc.pipe(res);
+
+  // Helper utilities
+  const ACCENT = '#ec4899'; // Tailwind pink-500 to match brand
+  const BORDER = '#e5e7eb'; // gray-200
+  const MUTED = '#6b7280'; // gray-500
+  const DARK = '#111827';  // gray-900
+  const LIGHT_BG = '#f9fafb';
+
+  // Layout metrics
+  const MARGIN = 50;
+  const LEFT = MARGIN;
+  const RIGHT = doc.page.width - MARGIN;
+  const CONTENT_W = RIGHT - LEFT;
+
+    const toCurrency = (val, curr) => {
+      const code = (curr || payment.currency || 'LKR').toUpperCase();
+      // Prefer generic formatting to avoid locale issues on server
+      return `${code} ${Number(val || 0).toFixed(2)}`;
+    };
+
+    const safeText = (t) => (t == null ? '' : String(t));
+
+  const yStart = doc.y;
+
+  // Header bar
+  doc.save();
+  doc.rect(LEFT, 40, CONTENT_W, 60).fill(ACCENT);
+    doc.restore();
+
+    // Brand/Title over the bar
+  doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('TuneShare', LEFT + 10, 55, { continued: true });
+    doc.font('Helvetica').text(' • Payment Receipt');
+
+    // Receipt meta box
+    const metaTop = 110;
+  doc.roundedRect(LEFT, metaTop, CONTENT_W, 70, 6).strokeColor(BORDER).lineWidth(1).stroke();
+  const META_PAD = 15;
+  const META_COL_W = CONTENT_W / 3;
+  const metaX0 = LEFT + META_PAD;
+  const metaX1 = LEFT + META_PAD + META_COL_W;
+  const metaX2 = LEFT + META_PAD + META_COL_W * 2;
+  const metaW = META_COL_W - META_PAD * 1.5;
+  doc.fontSize(10).fillColor(MUTED).text('Receipt No.', metaX0, metaTop + 12, { width: metaW });
+  doc.fontSize(12).fillColor(DARK).text(payment._id.toString(), metaX0, metaTop + 26, { width: metaW });
+  doc.fontSize(10).fillColor(MUTED).text('Date', metaX1, metaTop + 12, { width: metaW });
+  doc.fontSize(12).fillColor(DARK).text(new Date(payment.paidAt || payment.createdAt).toLocaleString(), metaX1, metaTop + 26, { width: metaW });
+  doc.fontSize(10).fillColor(MUTED).text('Status', metaX2, metaTop + 12, { width: metaW });
+    const statusText = (payment.status || '').toUpperCase();
+  doc.fontSize(12).fillColor(statusText === 'SUCCEEDED' ? '#059669' : '#dc2626').text(statusText || '—', metaX2, metaTop + 26, { width: metaW });
+
+    // PAID watermark if succeeded
+    if (payment.status === 'succeeded') {
+      doc.save().rotate(30, { origin: [doc.page.width / 2, doc.page.height / 2] });
+      doc.font('Helvetica-Bold').fontSize(80).fillColor('#059669').opacity(0.08).text('PAID', 100, doc.page.height / 2 - 40);
+      doc.restore().opacity(1);
+    }
+
+    // Parties / Customer block
+  const blockTop = metaTop + 90;
+  const leftColX = LEFT;
+  const rightColX = LEFT + CONTENT_W / 2 + 10;
+  const rightColW = RIGHT - rightColX;
+  doc.fontSize(12).fillColor(DARK).text('Billed To', leftColX, blockTop);
+  doc.fontSize(10).fillColor(MUTED).text('Name', leftColX, blockTop + 18);
+  doc.fontSize(12).fillColor(DARK).text(safeText(payment.user?.name) || '—', leftColX, blockTop + 32, { width: CONTENT_W / 2 - 20 });
+  doc.fontSize(10).fillColor(MUTED).text('Email', leftColX, blockTop + 52);
+  doc.fontSize(12).fillColor(DARK).text(safeText(payment.user?.email) || '—', leftColX, blockTop + 66, { width: CONTENT_W / 2 - 20 });
+
+    // Booking Summary
+    const booking = payment.booking;
+    const instrument = booking?.instrument;
+  doc.fontSize(12).fillColor(DARK).text('Booking Summary', rightColX, blockTop, { width: rightColW });
+    const pickup = booking?.pickupDate ? new Date(booking.pickupDate) : null;
+    const ret = booking?.returnDate ? new Date(booking.returnDate) : null;
+    const msInDay = 24 * 60 * 60 * 1000;
+    const daysRaw = pickup && ret ? Math.ceil((ret - pickup) / msInDay) : 1;
+    const days = Math.max(1, daysRaw || 1);
+
+  doc.fontSize(10).fillColor(MUTED).text('Booking ID', rightColX, blockTop + 18, { width: rightColW });
+  doc.fontSize(12).fillColor(DARK).text(booking?._id?.toString() || '—', rightColX, blockTop + 32, { width: rightColW });
+  doc.fontSize(10).fillColor(MUTED).text('Instrument', rightColX, blockTop + 52, { width: rightColW });
+  doc.fontSize(12).fillColor(DARK).text(`${safeText(instrument?.brand)} ${safeText(instrument?.model)}`.trim() || '—', rightColX, blockTop + 66, { width: rightColW });
+  doc.fontSize(10).fillColor(MUTED).text('Location', rightColX, blockTop + 86, { width: rightColW });
+  doc.fontSize(12).fillColor(DARK).text(safeText(instrument?.location) || '—', rightColX, blockTop + 100, { width: rightColW });
+  doc.fontSize(10).fillColor(MUTED).text('Rental Period', rightColX, blockTop + 120, { width: rightColW });
+    const periodStr = pickup && ret ? `${pickup.toISOString().slice(0,10)} → ${ret.toISOString().slice(0,10)} (${days} day${days>1 ? 's' : ''})` : '—';
+  doc.fontSize(12).fillColor(DARK).text(periodStr, rightColX, blockTop + 134, { width: rightColW });
+
+    // Charges Table
+  const tableTop = blockTop + 170;
+  const tableX = LEFT;
+  const tableW = CONTENT_W;
+  const rowH = 26;
+  const PAD = 12;
+  // Proportional column widths
+  const descW = Math.round(tableW * 0.52);
+  const qtyW = Math.round(tableW * 0.14);
+  const unitW = Math.round(tableW * 0.16);
+  const amtW = tableW - descW - qtyW - unitW; // ensure fit
+  const xDesc = tableX;
+  const xQty = xDesc + descW;
+  const xUnit = xQty + qtyW;
+  const xAmt = xUnit + unitW;
+
+  // Header background
+  doc.save();
+  doc.rect(tableX, tableTop, tableW, rowH).fill(LIGHT_BG);
+  doc.restore();
+  doc.strokeColor(BORDER).lineWidth(1).rect(tableX, tableTop, tableW, rowH).stroke();
+  doc.fontSize(11).fillColor(DARK).font('Helvetica-Bold');
+  doc.text('Description', xDesc + PAD, tableTop + 7, { width: descW - PAD * 2 });
+  doc.text('Qty/Days', xQty, tableTop + 7, { width: qtyW - PAD, align: 'right' });
+  doc.text('Unit Price', xUnit, tableTop + 7, { width: unitW - PAD, align: 'right' });
+  doc.text('Amount', xAmt, tableTop + 7, { width: amtW - PAD, align: 'right' });
+
+    const amountDisplay = typeof payment.displayAmount === 'number'
+      ? payment.displayAmount
+      : Math.round((payment.amount || 0) / 100);
+    const unitPrice = days > 0 ? (amountDisplay / days) : amountDisplay;
+
+    // Row: Rental Fee
+  const r1Top = tableTop + rowH;
+  doc.strokeColor(BORDER).lineWidth(1).rect(tableX, r1Top, tableW, rowH).stroke();
+  doc.font('Helvetica').fillColor(DARK).fontSize(11);
+  doc.text(`Instrument Rental - ${safeText(instrument?.brand)} ${safeText(instrument?.model)}`.trim(), xDesc + PAD, r1Top + 7, { width: descW - PAD * 2 });
+  doc.text(String(days), xQty, r1Top + 7, { width: qtyW - PAD, align: 'right' });
+  doc.text(toCurrency(unitPrice, payment.currency), xUnit, r1Top + 7, { width: unitW - PAD, align: 'right' });
+  doc.text(toCurrency(amountDisplay, payment.currency), xAmt, r1Top + 7, { width: amtW - PAD, align: 'right' });
+
+    // Totals area
+    const totalsTop = r1Top + rowH + 10;
+    const labelW = 120;
+    const valueW = 120;
+    const totalsX = tableX + tableW - (labelW + valueW + 10);
+    const drawTotalRow = (label, value, y, bold = false) => {
+      doc.fontSize(11).fillColor(MUTED).font(bold ? 'Helvetica-Bold' : 'Helvetica').text(label, totalsX, y, { width: labelW, align: 'right' });
+      doc.fontSize(12).fillColor(DARK).font(bold ? 'Helvetica-Bold' : 'Helvetica').text(value, totalsX + labelW + 10, y - 1, { width: valueW, align: 'right' });
+    };
+
+    drawTotalRow('Subtotal', toCurrency(amountDisplay, payment.currency), totalsTop);
+    if (typeof payment.commission === 'number') {
+      drawTotalRow('Platform Fee', toCurrency(payment.commission, payment.currency), totalsTop + 18);
+    }
+    const totalPaid = amountDisplay; // represents customer paid amount
+    drawTotalRow('Total Paid', toCurrency(totalPaid, payment.currency), totalsTop + 36, true);
+
+    // References
+  const refTop = totalsTop + 70;
+  doc.fontSize(12).fillColor(DARK).font('Helvetica-Bold').text('Payment References', LEFT, refTop, { width: CONTENT_W });
+  doc.fontSize(10).fillColor(MUTED).font('Helvetica').text('Checkout Session', LEFT, refTop + 18, { width: CONTENT_W });
+  doc.fontSize(11).fillColor(DARK).text(payment.stripeSessionId || '—', LEFT, refTop + 32, { width: CONTENT_W });
+  doc.fontSize(10).fillColor(MUTED).text('Payment Intent', LEFT, refTop + 52, { width: CONTENT_W });
+  doc.fontSize(11).fillColor(DARK).text(payment.stripePaymentIntentId || '—', LEFT, refTop + 66, { width: CONTENT_W });
+
+    // Perforation-style separator and footer note
+  const sepY = refTop + 95;
+  doc.save();
+  doc.strokeColor(BORDER).lineWidth(1).dash(3, { space: 2 });
+  doc.moveTo(LEFT, sepY).lineTo(RIGHT, sepY).stroke();
+    doc.undash();
+    doc.restore();
+
+  doc.fontSize(10).fillColor(MUTED).text('Thank you for your payment. This receipt serves as proof of payment for the booking listed above.', LEFT, sepY + 12, { align: 'center', width: CONTENT_W });
+
+    doc.end();
+  } catch (err) {
+    console.error('downloadUserReceipt error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate receipt' });
+  }
+};
