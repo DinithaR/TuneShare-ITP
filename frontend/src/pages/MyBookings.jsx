@@ -20,6 +20,9 @@ const MyBookings = () => {
   const [status, setStatus] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [receiptLoading, setReceiptLoading] = useState(false)
+  const [paymentForReceipt, setPaymentForReceipt] = useState(null)
   const navigate = useNavigate();
   const currency = import.meta.env.VITE_CURRENCY
   const { axios } = useAppContext()
@@ -144,6 +147,31 @@ const MyBookings = () => {
   const closeModal = () => {
     setShowModal(false)
     setSelectedBooking(null)
+  }
+
+  const openReceipt = async (e, bookingId) => {
+    e?.stopPropagation?.()
+    try {
+      setReceiptLoading(true)
+      setReceiptModalOpen(true)
+      const { data } = await axios.get(`/api/payments/for-booking/${bookingId}`)
+      if (data.success) {
+        setPaymentForReceipt(data.payment)
+      } else {
+        setPaymentForReceipt(null)
+        toast.error(data.message || 'Receipt not available')
+      }
+    } catch (err) {
+      setPaymentForReceipt(null)
+      toast.error('Failed to load receipt')
+    } finally {
+      setReceiptLoading(false)
+    }
+  }
+
+  const closeReceipt = () => {
+    setReceiptModalOpen(false)
+    setPaymentForReceipt(null)
   }
 
   return (
@@ -314,6 +342,14 @@ const MyBookings = () => {
                       {booking.ownerPayout != null && (
                         <p className='text-gray-500'>Owner Payout: {currency}{booking.ownerPayout}</p>
                       )}
+                      <div className='pt-2 flex gap-2 justify-end'>
+                        <button
+                          onClick={(e)=>openReceipt(e, booking._id)}
+                          className='px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded'
+                          title='View payment receipt'
+                        >View Receipt</button>
+                        {/* Download will be available inside modal once payment is fetched */}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -388,11 +424,20 @@ const MyBookings = () => {
                     className='mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded'
                   >Pay Now</button>
                 )}
+                {selectedBooking.paymentStatus === 'paid' && (
+                  <div className='flex gap-2 mt-2'>
+                    <button
+                      onClick={() => { closeModal(); openReceipt(null, selectedBooking._id); }}
+                      className='bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded'
+                    >View Receipt</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
+      <ReceiptModal open={receiptModalOpen} onClose={closeReceipt} loading={receiptLoading} payment={paymentForReceipt} currency={currency} axios={axios} />
     </div>
   )
 }
@@ -415,6 +460,83 @@ function Info({ label, value }) {
     <div>
       <p className='text-gray-500 text-xs uppercase tracking-wide'>{label}</p>
       <p className='font-medium mt-0.5 break-words'>{value}</p>
+    </div>
+  )
+}
+
+// Receipt Modal
+function ReceiptModal({ open, onClose, loading, payment, currency, axios }) {
+  if (!open) return null
+  const [downloading, setDownloading] = React.useState(false)
+  const amount = payment?.displayAmount ?? Math.round((payment?.amount || 0) / 100)
+  const booking = payment?.booking
+  const instrument = booking?.instrument
+  const status = payment?.status
+  const paidAt = payment?.paidAt ? new Date(payment.paidAt).toLocaleString() : null
+  const createdAt = payment?.createdAt ? new Date(payment.createdAt).toLocaleString() : null
+  const handleDownload = async () => {
+    if (!payment?._id) return
+    try {
+      setDownloading(true)
+      const res = await axios.get(`/api/payments/receipt/${payment._id}`,{ responseType: 'blob' })
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `receipt_${payment._id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error('Failed to download receipt')
+    } finally {
+      setDownloading(false)
+    }
+  }
+  return (
+    <div className='fixed inset-0 z-50 flex items-center justify-center'>
+      <div className='absolute inset-0 bg-black/40 backdrop-blur-sm' onClick={onClose}></div>
+      <div className='relative bg-white max-w-lg w-full mx-4 rounded-lg shadow-xl p-6 animate-fadeIn border' style={{ borderColor: 'var(--color-borderColor)' }}>
+        <button onClick={onClose} className='absolute top-3 right-3 text-gray-500 hover:text-gray-700' aria-label='Close'>✕</button>
+        <h3 className='text-xl font-semibold mb-1'>Payment Receipt</h3>
+        {loading ? (
+          <p className='text-gray-500'>Loading…</p>
+        ) : payment ? (
+          <div className='text-sm space-y-2'>
+            <div>
+              <p className='text-gray-500'>Payment ID</p>
+              <p className='font-medium break-all'>{payment._id}</p>
+            </div>
+            {booking && (
+              <div className='grid grid-cols-2 gap-3'>
+                <Info label='Booking ID' value={booking._id} />
+                <Info label='Status' value={status} />
+                <Info label='Amount' value={`${currency}${amount}`} />
+                {paidAt && <Info label='Paid At' value={paidAt} />}
+                {createdAt && <Info label='Created' value={createdAt} />}
+              </div>
+            )}
+            {instrument && (
+              <div className='mt-2'>
+                <p className='text-gray-500 text-xs uppercase tracking-wide'>Instrument</p>
+                <p className='font-medium'>{instrument.brand} {instrument.model}</p>
+                {instrument.location && <p className='text-gray-500'>Location: {instrument.location}</p>}
+              </div>
+            )}
+            <div className='pt-3 flex gap-2'>
+              {payment?._id && (
+                <button onClick={handleDownload} className='bg-gray-800 hover:bg-black text-white px-4 py-2 rounded disabled:opacity-60' disabled={downloading}>
+                  {downloading ? 'Downloading…' : 'Download PDF'}
+                </button>
+              )}
+              <button onClick={onClose} className='px-4 py-2 rounded border'>Close</button>
+            </div>
+          </div>
+        ) : (
+          <p className='text-red-600'>Receipt not available.</p>
+        )}
+      </div>
     </div>
   )
 }
