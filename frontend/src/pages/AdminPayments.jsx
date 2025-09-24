@@ -22,6 +22,23 @@ const AdminPayments = () => {
 
   useEffect(() => { fetchPayments(); }, []);
 
+  const downloadReport = async (paymentId) => {
+    try {
+      const res = await axios.get(`/api/payments/report/${paymentId}`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment_${paymentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Failed to download report');
+    }
+  };
+
   return (
     <div className='px-6 md:px-16 lg:px-32 2xl:px-48 mt-16 text-sm max-w-7xl'>
       <Title title='Payments' subtitle='All platform transactions' align='left' />
@@ -42,6 +59,7 @@ const AdminPayments = () => {
                 <th className='p-2 border'>Owner Payout</th>
                 <th className='p-2 border'>Status</th>
                 <th className='p-2 border'>Created</th>
+                <th className='p-2 border'>Report</th>
               </tr>
             </thead>
             <tbody>
@@ -57,6 +75,9 @@ const AdminPayments = () => {
                     <span className={`px-2 py-1 rounded-full text-xs ${p.status === 'succeeded' ? 'bg-green-100 text-green-600' : p.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>{p.status}</span>
                   </td>
                   <td className='p-2 border'>{new Date(p.createdAt).toLocaleDateString()}</td>
+                  <td className='p-2 border text-center'>
+                    <button onClick={() => downloadReport(p._id)} className='px-2 py-1 bg-pink-500 text-white rounded text-xs hover:bg-pink-600'>Download</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
