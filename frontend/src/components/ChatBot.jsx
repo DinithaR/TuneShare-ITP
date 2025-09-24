@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useAppContext } from '../context/AppContext';
 
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { instruments, axios, currency } = useAppContext();
   const [messages, setMessages] = useState([
     {
       type: 'bot',
@@ -46,20 +48,7 @@ const ChatBot = () => {
         })),
       };
 
-      const response = await fetch('http://localhost:3000/api/enquiry/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(enquiryData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
+      const { data } = await axios.post('/api/enquiry/save', enquiryData);
 
       if (data.success) {
         setMessages((prev) => [
@@ -79,7 +68,7 @@ const ChatBot = () => {
         throw new Error(data.message || 'Failed to save enquiry');
       }
     } catch (error) {
-      console.error('Error saving enquiry to database:', error);
+  console.error('Error saving enquiry to database:', error);
 
       setMessages((prev) => [
         ...prev,
@@ -94,22 +83,115 @@ const ChatBot = () => {
     }
   };
 
-  // Rule-based response system
+  // Helpers to use real site/database info
+  const fmtPrice = (n) => {
+    if (n === undefined || n === null) return 'N/A';
+    const sym = currency || 'LKR';
+    return `${sym} ${Number(n).toLocaleString()}`;
+  };
+
+  const instrumentIndex = useMemo(() => {
+    // Precompute lowercase searchable fields
+    return (instruments || []).map((it) => ({
+      ...it,
+      _lc: {
+        brand: (it.brand || '').toLowerCase(),
+        model: (it.model || '').toLowerCase(),
+        category: (it.category || '').toLowerCase(),
+        location: (it.location || '').toLowerCase(),
+      },
+    }));
+  }, [instruments]);
+
+  const findInstruments = (msg) => {
+    const q = msg.toLowerCase();
+    const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
+    if (!tokens.length) return [];
+    // Simple scoring: +1 per field match
+    const scored = instrumentIndex.map((it) => {
+      let score = 0;
+      tokens.forEach((t) => {
+        if (it._lc.brand.includes(t)) score += 2; // prioritize brand/model
+        if (it._lc.model.includes(t)) score += 2;
+        if (it._lc.category.includes(t)) score += 1;
+        if (it._lc.location.includes(t)) score += 0.5;
+      });
+      // availability bonus
+      if (it.isAvailable) score += 0.2;
+      // cheaper first slight bonus
+      score += Math.max(0, 100000 - (it.pricePerDay || 0)) / 1000000;
+      return { it, score };
+    });
+    return scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.it);
+  };
+
+  const listTopInstruments = (list, limit = 3) => {
+    const top = [...list].slice(0, limit);
+    if (!top.length) return 'No matching instruments found right now.';
+    const lines = top.map((it) => `• ${it.brand || ''} ${it.model || ''} — ${fmtPrice(it.pricePerDay)}/day — ${it.location || 'N/A'} ${it.isAvailable ? '✅ Available' : '⏳ Unavailable'}`);
+    return lines.join('\n');
+  };
+
+  const summarizeInventory = () => {
+    if (!instruments?.length) return 'I am loading our inventory. Please try again in a moment.';
+    const byCategory = instruments.reduce((acc, it) => {
+      const cat = it.category || 'Other';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {});
+    const categories = Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([cat, count]) => `${cat} (${count})`)
+      .join('\n• ');
+    const available = instruments.filter((it) => it.isAvailable).length;
+    return `We currently list ${instruments.length} instruments, with ${available} available now. Top categories:\n\n• ${categories}\n\nAsk me about a brand, model, category, or city to see matches.`;
+  };
+
+  const priceSummary = (scopeList) => {
+    const list = scopeList && scopeList.length ? scopeList : instruments;
+    if (!list?.length) return 'Pricing info is loading. Please try again shortly.';
+    const prices = list.map((it) => it.pricePerDay).filter((v) => typeof v === 'number');
+    if (!prices.length) return 'No prices found.';
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+    return `Typical pricing: ${fmtPrice(min)} - ${fmtPrice(max)} per day (avg ~ ${fmtPrice(avg.toFixed(0))}).`;
+  };
+
+  const locationsSummary = () => {
+    if (!instruments?.length) return 'Locations are loading. Please try again in a moment.';
+    const uniq = Array.from(new Set(instruments.map((it) => it.location).filter(Boolean)));
+    if (!uniq.length) return 'We will confirm pickup/delivery based on the specific instrument.';
+    const shown = uniq.slice(0, 8).join(', ');
+    return `We have listings in: ${shown}. Looking for a specific city?`;
+  };
+
+  // Rule-based response system augmented with live data
   const generateBotResponse = (userMessage) => {
     const message = userMessage.toLowerCase();
 
+    // If inventory not ready yet
+    if (!instruments || instruments.length === 0) {
+      // Still allow general responses
+      if (message.includes('instrument') && (message.includes('available') || message.includes('rent'))) {
+        return 'Loading our live inventory... please try again in a few seconds.';
+      }
+    }
+
     // Instrument availability responses
     if (message.includes('instrument') && (message.includes('available') || message.includes('rent'))) {
-      return (
-        'We have a fantastic selection of instruments available for rent! 🎸 Including:\n\n• Guitars (acoustic & electric)\n• Pianos & Keyboards\n• Drums & Percussion\n• Violins & String instruments\n• Wind instruments (saxophone, flute, trumpet)\n• Digital pianos\n\nWhat type of instrument interests you most?'
-      );
+      return summarizeInventory();
     }
 
     // Pricing information
     if (message.includes('price') || message.includes('cost') || message.includes('how much')) {
-      return (
-        'Our rental rates are very competitive! 💰\n\n• Basic instruments: $15-25/day\n• Professional instruments: $30-50/day\n• Premium/rare instruments: $50-80/day\n\nRates include basic maintenance and pickup/delivery within city limits. Would you like a quote for a specific instrument?'
-      );
+      const matches = findInstruments(message);
+      const scopeText = matches.length ? `for your query` : `across our catalogue`;
+      return `Here’s what I found ${scopeText}:\n\n${priceSummary(matches)}\n\nTop matches:\n${listTopInstruments(matches.length ? matches : instruments, 3)}`;
     }
 
     // Booking/reservation process
@@ -130,9 +212,7 @@ const ChatBot = () => {
 
     // Location/delivery information
     if (message.includes('location') || message.includes('pickup') || message.includes('delivery')) {
-      return (
-        "We're conveniently located with flexible options! 🚚\n\n• Main locations: Colombo, Malabe, Avissawella, Matara\n• Free pickup/delivery within city limits\n• Extended delivery available for additional fee\n• Store pickup also available\n\nWhich location works best for you?"
-      );
+      return locationsSummary();
     }
 
     // Duration/rental period
@@ -157,28 +237,14 @@ const ChatBot = () => {
     }
 
     // Specific instrument queries
-    if (message.includes('guitar')) {
-      return (
-        'Great choice! We have excellent guitars available! 🎸\n\n• Acoustic guitars: $20-30/day\n• Electric guitars: $25-40/day\n• Classical guitars: $18-25/day\n• Bass guitars: $25-35/day\n\nAll include necessary accessories (picks, straps, etc.). Amps available for electric guitars. Which type interests you?'
-      );
-    }
-
-    if (message.includes('piano') || message.includes('keyboard')) {
-      return (
-        'Perfect! Our piano selection is wonderful! 🎹\n\n• Digital pianos: $30-45/day\n• Keyboards: $20-35/day\n• Stage pianos: $40-60/day\n\nAll include stands, pedals, and power supplies. Which would work best for your needs?'
-      );
-    }
-
-    if (message.includes('drum')) {
-      return (
-        'Drums are so much fun! 🥁 We have:\n\n• Complete drum sets: $35-55/day\n• Electronic drums: $30-45/day\n• Individual drums: $10-20/day\n• Percussion instruments: $8-15/day\n\nIncludes sticks and basic hardware. Cymbals included with full sets!'
-      );
-    }
-
-    if (message.includes('violin') || message.includes('string')) {
-      return (
-        'Beautiful choice! String instruments available: 🎻\n\n• Violins: $20-35/day\n• Violas: $25-40/day\n• Cellos: $35-50/day\n• Double bass: $45-65/day\n\nIncludes bow, rosin, and case. Different sizes available for students!'
-      );
+    // Category/brand/model queries → live matches
+    if (['guitar','piano','keyboard','drum','violin','flute','trumpet','sax','saxophone','cajon','bass','amp','microphone'].some(k=>message.includes(k)) || /brand|model|category/.test(message)){
+      const matches = findInstruments(message).filter(Boolean);
+      if (!matches.length) {
+        return 'I couldn’t find matches for that query right now. Try another brand/model/category or browse the Instruments page.';
+      }
+      const top = listTopInstruments(matches, 5);
+      return `Here are some matches based on your query:\n\n${top}\n\nYou can proceed to the instrument page to create a booking.`;
     }
 
     // Help/assistance
@@ -398,15 +464,9 @@ const ChatBot = () => {
               <div className="flex justify-start">
                 <div className="bg-gray-100 text-gray-800 px-3 py-2 rounded-2xl rounded-bl-sm">
                   <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '0.1s' }}
-                    ></div>
-                    <div
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '0.2s' }}
-                    ></div>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300"></span>
                   </div>
                 </div>
               </div>
