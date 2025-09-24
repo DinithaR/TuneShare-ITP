@@ -15,8 +15,13 @@ import ManageBookings from './pages/owner/ManageBookings'
 import Login from './components/Login'
 import { Toaster } from 'react-hot-toast'
 import { useAppContext } from './context/AppContext'
-import AdminDashboard from './pages/AdminDashboard'
 import AdminPayments from './pages/AdminPayments'
+import AdminLayout from './pages/admin/Layout'
+import AdminOverview from './pages/admin/Overview'
+import AdminUsers from './pages/admin/Users'
+import AdminInstruments from './pages/admin/Instruments'
+import AdminBookings from './pages/admin/Bookings'
+import AdminReviews from './pages/admin/Reviews'
 import Profile from './pages/Profile'
 import ChatBot from './components/ChatBot'
 
@@ -45,8 +50,14 @@ const App = () => {
           <Route path="manage-instruments" element={<ManageInstruments />} />
           <Route path="manage-bookings" element={<ManageBookings />} />
         </Route>
-  <Route path='/admin' element={role === 'admin' ? <AdminDashboard /> : <div className="flex items-center justify-center h-96 text-2xl font-bold text-red-500">Unauthorized</div>} />
-  <Route path='/admin/payments' element={role === 'admin' ? <AdminPayments /> : <div className="flex items-center justify-center h-96 text-2xl font-bold text-red-500">Unauthorized</div>} />
+  <Route path='/admin' element={role === 'admin' ? <AdminLayout /> : <div className="flex items-center justify-center h-96 text-2xl font-bold text-red-500">Unauthorized</div>}>
+    <Route index element={<AdminOverview />} />
+    <Route path='users' element={<AdminUsers />} />
+    <Route path='instruments' element={<AdminInstruments />} />
+    <Route path='bookings' element={<AdminBookings />} />
+    <Route path='payments' element={<AdminPayments />} />
+    <Route path='reviews' element={<AdminReviews />} />
+  </Route>
       </Routes>
 
       {!isOwnerPath && <Footer />}
