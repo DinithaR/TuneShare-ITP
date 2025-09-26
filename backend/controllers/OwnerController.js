@@ -21,34 +21,127 @@ export const addInstrument = async (req, res) => {
     try {
         const {_id} = req.user;
         let instrument = JSON.parse(req.body.instrumentData);
-        const imageFile = req.file;
+        const imageFiles = req.files || [];
 
-        // Upload Image to ImageKit
-        const fileBuffer = fs.readFileSync(imageFile.path)
-        const response = await imagekit.upload({
-            file: fileBuffer,
-            fileName: imageFile.originalname,
-            folder: '/instruments'
-        })
+        if (!imageFiles.length) {
+            return res.json({success: false, message: 'At least one image is required'});
+        }
 
-        // optimization through imagekit URL transformation
-        var optimizedImageUrl = imagekit.url({
-            path : response.filePath,
-            transformation : [
-                {width: '1280'}, // Width resizing
-                {quality: 'auto'}, // Auto compression
-                {format: 'webp'} // Convert to modern format
-            ]
-        });
+        if (imageFiles.length > 5) {
+            return res.json({success: false, message: 'You can upload a maximum of 5 images'});
+        }
 
-        const image = optimizedImageUrl;
-        await Instrument.create({...instrument, owner: _id, image})
+        // Upload each image to ImageKit and collect optimized URLs
+        const uploadedUrls = [];
+        for (const imageFile of imageFiles) {
+            const fileBuffer = fs.readFileSync(imageFile.path);
+            const response = await imagekit.upload({
+                file: fileBuffer,
+                fileName: imageFile.originalname,
+                folder: '/instruments'
+            });
+
+            const optimizedImageUrl = imagekit.url({
+                path : response.filePath,
+                transformation : [
+                    {width: '1280'}, // Width resizing
+                    {quality: 'auto'}, // Auto compression
+                    {format: 'webp'} // Convert to modern format
+                ]
+            });
+
+            uploadedUrls.push(optimizedImageUrl);
+        }
+
+        const image = uploadedUrls[0];
+        const images = uploadedUrls;
+        await Instrument.create({...instrument, owner: _id, image, images})
 
         res.json({success: true, message: "Instrument Added"})
 
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message})
+    }
+}
+
+// API to update Instrument details (and optionally images)
+export const updateInstrument = async (req, res) => {
+    try {
+        const { _id } = req.user;
+        const payload = JSON.parse(req.body.instrumentData || '{}');
+        const { instrumentId, keepImages, ...incoming } = payload;
+
+        if (!instrumentId) {
+            return res.json({ success: false, message: 'instrumentId is required' });
+        }
+
+        const instrument = await Instrument.findById(instrumentId);
+        if (!instrument) {
+            return res.json({ success: false, message: 'Instrument not found' });
+        }
+
+        if (instrument.owner.toString() !== _id.toString()) {
+            return res.json({ success: false, message: 'Unauthorized' });
+        }
+
+        // Whitelist updatable fields
+        const updatable = ['brand', 'model', 'category', 'pricePerDay', 'location', 'description'];
+        updatable.forEach((key) => {
+            if (key in incoming) instrument[key] = incoming[key];
+        });
+
+        const imageFiles = req.files || [];
+        // Upload any new images and merge with keepImages (or existing images) up to 5 total
+        const uploadedUrls = [];
+        if (imageFiles.length > 0) {
+            if (imageFiles.length > 5) {
+                return res.json({ success: false, message: 'You can upload a maximum of 5 images at once' });
+            }
+            for (const imageFile of imageFiles) {
+                const fileBuffer = fs.readFileSync(imageFile.path);
+                const response = await imagekit.upload({
+                    file: fileBuffer,
+                    fileName: imageFile.originalname,
+                    folder: '/instruments'
+                });
+
+                const optimizedImageUrl = imagekit.url({
+                    path: response.filePath,
+                    transformation: [
+                        { width: '1280' },
+                        { quality: 'auto' },
+                        { format: 'webp' }
+                    ]
+                });
+                uploadedUrls.push(optimizedImageUrl);
+            }
+        }
+
+        // Determine base images to keep
+        let baseImages = Array.isArray(keepImages)
+            ? keepImages.filter(Boolean)
+            : (Array.isArray(instrument.images) && instrument.images.length > 0
+                ? instrument.images
+                : (instrument.image ? [instrument.image] : []));
+
+        // Merge and cap to 5
+        const merged = [...baseImages, ...uploadedUrls].filter(Boolean);
+        const unique = Array.from(new Set(merged));
+        const finalImages = unique.slice(0, 5);
+
+        if (finalImages.length === 0) {
+            return res.json({ success: false, message: 'At least one image is required' });
+        }
+
+        instrument.image = finalImages[0];
+        instrument.images = finalImages;
+
+        await instrument.save();
+        res.json({ success: true, message: 'Instrument updated', instrument });
+    } catch (error) {
+        console.log(error.message);
+        res.json({ success: false, message: error.message });
     }
 }
 

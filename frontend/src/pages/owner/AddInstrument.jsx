@@ -10,7 +10,7 @@ const AddInstrument = () => {
   const {axios, currency} = useAppContext()
 
 
-  const [image, setImage] = useState(null)
+  const [images, setImages] = useState([])
   const [instrument, setInstrument] = useState({
     brand: '',
     model: '',
@@ -27,15 +27,16 @@ const AddInstrument = () => {
 
     setIsLoading(true)
     try {
-      const formData = new FormData()
-      formData.append('image', image)
+  const formData = new FormData()
+  // Append up to 5 images
+  images.forEach((file) => formData.append('images', file))
       formData.append('instrumentData', JSON.stringify(instrument))
 
       const {data} = await axios.post('/api/owner/add-instrument', formData)
 
       if(data.success){
         toast.success(data.message)
-        setImage(null)
+        setImages([])
         setInstrument({
           brand: '',
           model: '',
@@ -63,13 +64,32 @@ const AddInstrument = () => {
       <form onSubmit={onSubmitHandler} className='flex flex-col gap-5 text-[#1E293B] text-sm mt-6 max-w-xl'>
 
 
-        {/* Instrument Image */}
-        <div className='flex items-center gap-2 w-full'>
-          <label htmlFor="instrument-image">
-            <img src={image ? URL.createObjectURL(image) : assets.upload_icon} alt="" className='h-14 rounded cursor-pointer'/>
-            <input type="file" id="instrument-image" accept='image/*' hidden onChange={e=>setImage(e.target.files[0])}/>
+        {/* Instrument Images */}
+        <div className='flex items-start gap-4 w-full'>
+          <label htmlFor="instrument-images" className='cursor-pointer'>
+            <img src={assets.upload_icon} alt="" className='h-14 rounded'/>
+            <input
+              type="file"
+              id="instrument-images"
+              accept='image/*'
+              multiple
+              hidden
+              onChange={e=>{
+                const files = Array.from(e.target.files || [])
+                setImages(files.slice(0,5))
+              }}
+            />
           </label>
-          <p className='text-sm text-[#1E293B]'>Upload the picture of your Instrument</p>
+          <div className='flex-1'>
+            <p className='text-sm text-[#1E293B]'>Upload up to 5 pictures of your instrument</p>
+            {images.length > 0 && (
+              <div className='mt-2 grid grid-cols-5 gap-2'>
+                {images.map((file, idx) => (
+                  <img key={idx} src={URL.createObjectURL(file)} alt={file.name} className='h-16 w-16 object-cover rounded border'/>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
 
