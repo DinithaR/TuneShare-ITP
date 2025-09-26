@@ -7,6 +7,8 @@ const instrumentSchema = new mongoose.Schema({
     brand: {type: String, required: true},
     model: {type: String, required: true},
     image: {type: String, required: true},
+    // New: Support multiple images (up to 5). First image will be stored in `image` for backward compatibility
+    images: {type: [String], default: []},
     category: {type: String, required: true},
     pricePerDay: {type: Number, required: true},
     location: {type: String, required: true},

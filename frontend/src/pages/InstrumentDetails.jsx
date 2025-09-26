@@ -18,6 +18,7 @@ const InstrumentDetails = () => {
   const [myRating, setMyRating] = useState(0)
   const [myComment, setMyComment] = useState('')
   const [loadingReviews, setLoadingReviews] = useState(true)
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
   // const [clientSecret, setClientSecret] = useState(null)
   // const [bookingId, setBookingId] = useState(null)
   const currency = import.meta.env.VITE_CURRENCY
@@ -77,6 +78,19 @@ const InstrumentDetails = () => {
       navigate('/instruments')
     }
   }, [instruments, id, navigate])
+
+  // Prepare images list for gallery (supports multiple images)
+  const imageList = useMemo(() => {
+    if (!instrument) return []
+    if (instrument.images && instrument.images.length > 0) return instrument.images
+    if (instrument.image) return [instrument.image]
+    return [assets.hero_img]
+  }, [instrument])
+
+  // Reset active image when instrument changes
+  useEffect(() => {
+    setActiveImageIndex(0)
+  }, [instrument?._id])
 
   // Fetch reviews
   useEffect(() => {
@@ -142,9 +156,29 @@ const InstrumentDetails = () => {
 
       <div className='grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12'>
         
-        {/* Left: Instrument Image & Details */}
+        {/* Left: Instrument Images & Details */}
         <div className='lg:col-span-2'>
-          <img src={instrument.image} alt={`${instrument.brand || ''} ${instrument.model || ''}`} className='w-full h-auto max-h-96 object-cover rounded-xl mb-6 shadow-md' />
+          {/* Main Image */}
+          <img
+            src={imageList[activeImageIndex]}
+            alt={`${instrument.brand || ''} ${instrument.model || ''}`}
+            className='w-full h-auto max-h-96 object-cover rounded-xl mb-3 shadow-md'
+          />
+          {/* Thumbnails */}
+          {imageList.length > 1 && (
+            <div className='grid grid-cols-5 gap-2 mb-6'>
+              {imageList.map((url, idx) => (
+                <button
+                  key={idx}
+                  type='button'
+                  onClick={() => setActiveImageIndex(idx)}
+                  className={`border rounded-lg overflow-hidden focus:outline-none ${idx === activeImageIndex ? 'ring-2 ring-primary border-primary' : 'border-borderColor'}`}
+                >
+                  <img src={url} alt={`thumb-${idx}`} className='w-full h-16 object-cover' />
+                </button>
+              ))}
+            </div>
+          )}
           <div className='space-y-6'>
             <div>
               <h1 className='text-3xl font-bold text-gray-800'>
