@@ -17,11 +17,16 @@ const InstrumentDetails = () => {
   const [reviewCount, setReviewCount] = useState(0)
   const [myRating, setMyRating] = useState(0)
   const [myComment, setMyComment] = useState('')
+  const [editingReviewId, setEditingReviewId] = useState(null)
   const [loadingReviews, setLoadingReviews] = useState(true)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   // const [clientSecret, setClientSecret] = useState(null)
   // const [bookingId, setBookingId] = useState(null)
   const currency = import.meta.env.VITE_CURRENCY
+  const isOwnerOfInstrument = !!(user && instrument && (
+    (instrument.owner && typeof instrument.owner === 'object' && instrument.owner._id === user._id) ||
+    (instrument.owner && typeof instrument.owner === 'string' && instrument.owner === user._id)
+  ));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -119,14 +124,7 @@ const InstrumentDetails = () => {
           setAvgRating(data.stats.avgRating || 0)
           setReviewCount(data.stats.count || 0)
         }
-        // load my review if logged in
-        if (user) {
-          const my = await axios.get(`/api/reviews/instrument/${id}/me`)
-          if (my.data.success && my.data.review) {
-            setMyRating(my.data.review.rating)
-            setMyComment(my.data.review.comment || '')
-          }
-        }
+        // Do not prefill the form with user's existing review; only populate when user clicks Edit
       } catch (e) {
         // ignore
       } finally {
@@ -157,8 +155,41 @@ const InstrumentDetails = () => {
           const rest = prev.filter(r => r.user?._id !== user?._id)
           return [data.review, ...rest]
         })
+        setEditingReviewId(null)
       } else {
         toast.error(data.message)
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message)
+    }
+  }
+
+  const handleEditMyReview = (r) => {
+    setMyRating(r.rating || 0)
+    setMyComment(r.comment || '')
+    setEditingReviewId(r._id)
+    // Optionally scroll to form
+    try { document.getElementById('review-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* noop */ }
+  }
+
+  const handleDeleteMyReview = async (r) => {
+    const ok = window.confirm('Delete your review? This cannot be undone.')
+    if (!ok) return
+    try {
+      const { data } = await axios.delete(`/api/reviews/${r._id}`)
+      if (data.success) {
+        toast.success('Review deleted')
+        setReviews(prev => prev.filter(x => x._id !== r._id))
+        if (data.stats) {
+          setAvgRating(data.stats.avgRating || 0)
+          setReviewCount(data.stats.count || 0)
+        }
+        setMyRating(0)
+        setMyComment('')
+        setEditingReviewId(null)
+        fetchRatingsSummary?.()
+      } else {
+        toast.error(data.message || 'Failed to delete review')
       }
     } catch (error) {
       toast.error(error.response?.data?.message || error.message)
@@ -203,7 +234,7 @@ const InstrumentDetails = () => {
                 <h1 className='text-3xl font-bold text-gray-800'>
                   {instrument.brand || ''} {instrument.model || instrument.name || 'Instrument'}
                 </h1>
-                {user && instrument.owner === user._id && (
+                {isOwnerOfInstrument && (
                   <span className='text-xs bg-amber-500/90 text-white px-2.5 py-1 rounded-full shadow-sm'>Your Listing</span>
                 )}
               </div>
@@ -273,16 +304,28 @@ const InstrumentDetails = () => {
           <div className='mt-8'>
             <h2 className='text-xl font-semibold mb-4 text-gray-800'>Ratings & Reviews</h2>
             {user ? (
-              <form onSubmit={handleReviewSubmit} className='mb-6 p-4 border border-borderColor rounded-lg'>
+              <form id='review-form' onSubmit={handleReviewSubmit} className='mb-6 p-4 border border-borderColor rounded-lg'>
                 <div className='flex items-center gap-3 mb-3'>
                   <label className='text-sm text-gray-700'>Your rating:</label>
                   <select value={myRating} onChange={(e)=> setMyRating(e.target.value)} className='border rounded px-2 py-1'>
                     <option value={0}>Select</option>
                     {[1,2,3,4,5].map(n=> <option key={n} value={n}>{n}</option>)}
                   </select>
+                  {editingReviewId && (
+                    <span className='ml-2 text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded'>Editing your review</span>
+                  )}
                 </div>
                 <textarea value={myComment} onChange={(e)=> setMyComment(e.target.value)} placeholder='Share your experience…' className='w-full border border-borderColor rounded-lg p-2 mb-3' rows={3} />
-                <button className='bg-primary text-white px-4 py-2 rounded-lg'>Submit review</button>
+                <div className='flex items-center gap-3'>
+                  <button type='submit' className='bg-primary text-white px-4 py-2 rounded-lg'>
+                    {editingReviewId ? 'Update review' : 'Submit review'}
+                  </button>
+                  {editingReviewId && (
+                    <button type='button' onClick={()=>{ setEditingReviewId(null); setMyRating(0); setMyComment('') }} className='px-3 py-2 rounded-lg border border-borderColor text-gray-700 hover:bg-gray-50'>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             ) : (
               <p className='text-sm text-gray-500 mb-4'>Log in to leave a review.</p>
@@ -300,7 +343,15 @@ const InstrumentDetails = () => {
                         <span className='font-medium'>{r.user?.name || 'User'}</span>
                         <span className='text-yellow-600'>⭐ {r.rating}</span>
                       </div>
-                      <span className='text-xs text-gray-400'>{new Date(r.createdAt).toLocaleDateString()}</span>
+                      <div className='flex items-center gap-2'>
+                        <span className='text-xs text-gray-400'>{new Date(r.createdAt).toLocaleDateString()}</span>
+                        {user && r.user?._id === user._id && (
+                          <>
+                            <button onClick={()=>handleEditMyReview(r)} className='text-xs px-2 py-1 rounded border border-borderColor hover:bg-gray-50'>Edit</button>
+                            <button onClick={()=>handleDeleteMyReview(r)} className='text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50'>Delete</button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     {r.comment && <p className='text-sm text-gray-700'>{r.comment}</p>}
                   </div>
@@ -325,7 +376,7 @@ const InstrumentDetails = () => {
                   This instrument is currently rented out and unavailable for new bookings.
                 </div>
               )}
-              {user && instrument.owner === user._id && instrument.isAvailable && (
+              {isOwnerOfInstrument && instrument.isAvailable && (
                 <div className='p-3 bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-md'>
                   You are the owner of this instrument. Owners cannot create bookings for their own listings.
                 </div>
@@ -360,12 +411,12 @@ const InstrumentDetails = () => {
               </div>
               <button 
                 type="submit"
-                disabled={!instrument.isAvailable || (user && instrument.owner === user._id)}
-                className={`w-full transition-colors duration-200 py-3 font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${instrument.isAvailable && !(user && instrument.owner === user._id) ? 'bg-primary hover:bg-primary-dull cursor-pointer' : 'bg-gray-400 cursor-not-allowed'}`}
+                disabled={!instrument.isAvailable || isOwnerOfInstrument}
+                className={`w-full transition-colors duration-200 py-3 font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${instrument.isAvailable && !isOwnerOfInstrument ? 'bg-primary hover:bg-primary-dull cursor-pointer' : 'bg-gray-400 cursor-not-allowed'}`}
               >
-                {!instrument.isAvailable ? 'Unavailable' : (user && instrument.owner === user._id) ? 'Owner Cannot Book' : 'Book Now'}
+                {!instrument.isAvailable ? 'Unavailable' : isOwnerOfInstrument ? 'Owner Cannot Book' : 'Book Now'}
               </button>
-              {instrument.isAvailable && !(user && instrument.owner === user._id) && (
+              {instrument.isAvailable && !isOwnerOfInstrument && (
                 <p className='text-center text-sm text-gray-500'>
                   No credit card required to reserve
                 </p>
