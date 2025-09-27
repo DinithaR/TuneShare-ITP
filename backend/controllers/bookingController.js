@@ -397,13 +397,33 @@ export const markReturn = async (req, res) => {
             return res.json({ success: false, message: 'Return already marked.' });
         }
         booking.returnConfirmedAt = new Date();
+        // Late return calculation
+        try {
+            const plannedReturn = new Date(booking.returnDate);
+            const actualReturn = booking.returnConfirmedAt;
+            const msInDay = 24 * 60 * 60 * 1000;
+            // Calculate late days (ceil for any partial day late)
+            const diffMs = actualReturn - plannedReturn;
+            const lateDays = diffMs > 0 ? Math.ceil(diffMs / msInDay) : 0;
+            booking.lateDays = lateDays;
+            if (lateDays > 0 && booking.instrument?.pricePerDay) {
+                booking.lateFee = lateDays * booking.instrument.pricePerDay;
+                booking.lateFeePaid = false;
+            } else {
+                booking.lateFee = 0;
+                booking.lateFeePaid = true; // no fee needed
+            }
+        } catch (e) {
+            // do not block return on computation errors
+            console.warn('Late fee compute failed:', e.message);
+        }
         // Make instrument available again
         if (booking.instrument && !booking.instrument.isAvailable) {
             booking.instrument.isAvailable = true;
             await booking.instrument.save();
         }
         await booking.save();
-        res.json({ success: true, message: 'Return marked successfully', booking });
+    res.json({ success: true, message: 'Return marked successfully', booking });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }

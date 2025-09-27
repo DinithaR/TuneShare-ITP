@@ -1,11 +1,12 @@
 import express from 'express';
-import { createPaymentIntent, mockPaymentSuccess, createCheckoutSession, stripeWebhook, listMyPayments, listAllPayments, debugPayment, syncPaymentStatus, downloadPaymentReport, getPaymentForBooking, downloadUserReceipt } from '../controllers/paymentController.js';
+import { createPaymentIntent, mockPaymentSuccess, createCheckoutSession, stripeWebhook, listMyPayments, listAllPayments, debugPayment, syncPaymentStatus, downloadPaymentReport, getPaymentForBooking, downloadUserReceipt, createLateFeeCheckoutSession } from '../controllers/paymentController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.post('/create-intent', protect, createPaymentIntent);
 router.post('/create-checkout-session', protect, createCheckoutSession);
+router.post('/create-late-fee-session', protect, createLateFeeCheckoutSession);
 router.post('/mock-success', protect, mockPaymentSuccess);
 router.get('/mine', protect, listMyPayments);
 router.get('/admin', protect, isAdmin, listAllPayments);

@@ -142,6 +142,21 @@ const MyBookings = () => {
     }
   }
 
+  const handlePayLateFee = async (e, bookingId) => {
+    e?.stopPropagation?.()
+    try {
+      const { data } = await axios.post('/api/payments/create-late-fee-session', { bookingId })
+      if (data.success && data.url) {
+        window.location.href = data.url
+      } else {
+        toast.error(data.message || 'Could not start late fee payment')
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.message || err.message || 'Could not start late fee payment'
+      toast.error(msg)
+    }
+  }
+
   const openBookingModal = (booking) => {
     setSelectedBooking(booking)
     setShowModal(true)
@@ -238,16 +253,19 @@ const MyBookings = () => {
           bookings.map((booking, index) => (
             <div
               key={booking._id}
-              onClick={() => openBookingModal(booking)}
-              className='grid grid-cols-1 md:grid-cols-4 gap-6 p-6 border rounded-lg mt-5 first:mt-12 cursor-pointer hover:shadow-sm transition-shadow'
+              className='grid grid-cols-1 md:grid-cols-4 gap-6 p-6 border rounded-lg mt-5 first:mt-12 hover:shadow-sm transition-shadow'
               style={{ borderColor: 'var(--color-borderColor)' }}
-              role='button'
-              tabIndex={0}
-              onKeyDown={(e)=>{ if(e.key==='Enter') openBookingModal(booking) }}
             >
               {/* Instrument Image + info */}
               <div className='md:col-span-1'>
-                <div className='rounded-md overflow-hidden mb-3'>
+                <div
+                  className='rounded-md overflow-hidden mb-3 cursor-pointer'
+                  role='button'
+                  tabIndex={0}
+                  title='View booking details'
+                  onClick={() => openBookingModal(booking)}
+                  onKeyDown={(e)=>{ if(e.key==='Enter') openBookingModal(booking) }}
+                >
                   <img src={booking?.instrument?.image || ''} alt={booking?.instrument?.name || 'Instrument'} className='w-full h-auto aspect-video object-cover'/>
                 </div>
                 <p className='text-lg font-medium mt-2'>{highlight(`${booking?.instrument?.brand || ''} ${booking?.instrument?.model || ''}`, debouncedSearch)}</p>
@@ -338,6 +356,13 @@ const MyBookings = () => {
                   <p>Total Price</p>
                   <h1 className='text-2xl font-semibold' style={{ color: 'var(--color-primary)' }}>{currency}{booking.price}</h1>
                   <p>Booked on {booking.createdAt.split('T')[0]}</p>
+                  {booking.lateFee > 0 && (
+                    <div className='mt-1 text-xs'>
+                      <span className='inline-block bg-amber-50 text-amber-700 px-2 py-0.5 rounded'>
+                        Late Fee: {currency}{booking.lateFee} {booking.lateFeePaid ? '(paid)' : '(unpaid)'}
+                      </span>
+                    </div>
+                  )}
                   {booking.paymentStatus === 'paid' && (
                     <div className='mt-2 text-xs text-green-600 space-y-0.5'>
                       <p className='font-medium'>Payment: Paid</p>
@@ -362,7 +387,7 @@ const MyBookings = () => {
                   )}
                 </div>
                 {/* Show Pay Now if not paid, else show Cancel if paid and not confirmed */}
-        {booking.status === 'cancelled' ? null : booking.paymentStatus !== 'paid' ? (
+                {booking.status === 'cancelled' ? null : booking.paymentStatus !== 'paid' ? (
                   <div className='mt-4'>
                     <button
           onClick={(e) => { e.stopPropagation(); handlePayNow(booking._id) }}
@@ -381,6 +406,18 @@ const MyBookings = () => {
                     </button>
                   </div>
                 ) : null}
+                {/* Late fee payment CTA if applicable */}
+                {booking.lateFee > 0 && !booking.lateFeePaid && (
+                  <div className='mt-2'>
+                    <button
+                      onClick={(e)=>handlePayLateFee(e, booking._id)}
+                      className='w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg'
+                      title={`Late by ${booking.lateDays} day(s). Pay late fee.`}
+                    >
+                      Pay Late Fee ({currency}{booking.lateFee})
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -438,6 +475,12 @@ const MyBookings = () => {
                       onClick={() => { closeModal(); openReceipt(null, selectedBooking._id); }}
                       className='bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded'
                     >View Receipt</button>
+                    {selectedBooking.lateFee > 0 && !selectedBooking.lateFeePaid && (
+                      <button
+                        onClick={() => { closeModal(); handlePayLateFee(null, selectedBooking._id); }}
+                        className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded'
+                      >Pay Late Fee ({currency}{selectedBooking.lateFee})</button>
+                    )}
                   </div>
                 )}
               </div>

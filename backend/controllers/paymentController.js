@@ -77,10 +77,11 @@ export const createCheckoutSession = async (req, res) => {
     try {
       const commission = Math.round(booking.price * 0.10);
       await Payment.findOneAndUpdate(
-        { booking: booking._id, user: booking.user },
+        { booking: booking._id, user: booking.user, type: 'rental' },
         {
           booking: booking._id,
           user: booking.user,
+          type: 'rental',
           amount: booking.price * 100,
           displayAmount: booking.price,
           currency: 'lkr',
@@ -205,28 +206,32 @@ export const stripeWebhook = async (req, res) => {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     console.log('[Stripe Webhook] checkout.session.completed session.id:', session.id, 'payment_intent:', session.payment_intent);
-    const bookingId = session.metadata && session.metadata.bookingId;
+  const bookingId = session.metadata && session.metadata.bookingId;
+  const paymentType = session.metadata && session.metadata.paymentType; // 'rental' or 'late_fee'
     console.log('[Stripe Webhook] Extracted bookingId:', bookingId);
     if (bookingId) {
       try {
         const booking = await Booking.findById(bookingId);
         if (booking) {
-          booking.paymentStatus = 'paid';
-          // Leave status as 'pending' for owner approval
-          if (booking.status === 'pending') {
-            booking.paidAt = new Date();
+          if (paymentType === 'late_fee') {
+            // Mark late fee paid only
+            booking.lateFeePaid = true;
+            booking.lateFeePaidAt = new Date();
+          } else {
+            // Initial rental payment
+            booking.paymentStatus = 'paid';
+            // Leave status as 'pending' for owner approval
+            if (booking.status === 'pending') {
+              booking.paidAt = new Date();
+            }
           }
           booking.lastWebhookEventId = event.id;
             booking.lastWebhookAt = new Date();
           await booking.save();
-          console.log('[Stripe Webhook] Booking updated paymentStatus=paid, paidAt set? ', !!booking.paidAt);
+          console.log('[Stripe Webhook] checkout completed for type=', paymentType || 'rental');
           await Payment.findOneAndUpdate(
-            { booking: booking._id },
-            {
-              status: 'succeeded',
-              paidAt: new Date(),
-              stripePaymentIntentId: session.payment_intent || undefined,
-            }
+            { booking: booking._id, type: paymentType === 'late_fee' ? 'late_fee' : 'rental' },
+            { status: 'succeeded', paidAt: new Date(), stripePaymentIntentId: session.payment_intent || undefined }
           );
           console.log('Booking payment captured; awaiting owner approval:', bookingId);
           if (process.env.STORE_WEBHOOK_EVENT_LOG === 'true') {
@@ -246,6 +251,82 @@ export const stripeWebhook = async (req, res) => {
     }
   }
   res.json({ received: true });
+};
+
+// POST /api/payments/create-late-fee-session
+export const createLateFeeCheckoutSession = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId required' });
+    const booking = await Booking.findById(bookingId).populate('instrument');
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+    if (!booking.returnConfirmedAt) {
+      return res.status(400).json({ success: false, message: 'Return is not marked yet; no late fee to pay.' });
+    }
+    if (!booking.lateFee || booking.lateFee <= 0) {
+      return res.status(400).json({ success: false, message: 'No late fee due for this booking' });
+    }
+    if (booking.lateFeePaid) {
+      return res.status(400).json({ success: false, message: 'Late fee already paid' });
+    }
+    const currency = (process.env.STRIPE_CURRENCY || 'lkr').toLowerCase();
+    const amount = booking.lateFee; // display currency amount
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency,
+            product_data: {
+              name: `Late return fee: ${booking.instrument?.brand || ''} ${booking.instrument?.model || ''}`.trim(),
+              description: `Late by ${booking.lateDays} day(s)`,
+            },
+            unit_amount: amount * 100,
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      metadata: {
+        bookingId: booking._id.toString(),
+        paymentType: 'late_fee',
+      },
+      success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?success=true&bookingId=${booking._id}&lateFee=true`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?canceled=true&bookingId=${booking._id}&lateFee=true`,
+      });
+    } catch (stripeErr) {
+      console.error('Stripe late fee session error:', stripeErr?.message || stripeErr);
+      return res.status(500).json({ success: false, message: stripeErr?.message || 'Stripe session error' });
+    }
+
+    // Upsert Payment doc for late fee
+    const commission = Math.round(amount * 0.10);
+    await Payment.findOneAndUpdate(
+      { booking: booking._id, user: booking.user, type: 'late_fee' },
+      {
+        booking: booking._id,
+        user: booking.user,
+        type: 'late_fee',
+        amount: amount * 100,
+        displayAmount: amount,
+        currency,
+        commission,
+        ownerPayout: amount - commission,
+        stripeSessionId: session.id,
+        stripePaymentIntentId: session.payment_intent || null,
+        status: 'pending',
+        rawSession: session,
+      },
+      { upsert: true, new: true }
+    );
+
+    return res.json({ success: true, url: session.url });
+  } catch (err) {
+    console.error('createLateFeeCheckoutSession error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create late fee session' });
+  }
 };
 
 // GET /api/payments/mine - list current user's payments
