@@ -16,9 +16,10 @@ const Instruments = () => {
   const pickupLocation = searchParams.get('pickupLocation')
   const pickupDate = searchParams.get('pickupDate')
   const returnDate = searchParams.get('returnDate')
+  const q = searchParams.get('q') || ''
 
 
-  const {instruments, axios} = useAppContext()
+  const {instruments, axios, ratingsSummary} = useAppContext()
 
 
   const [input, setInput] = useState('')
@@ -51,7 +52,11 @@ const Instruments = () => {
       const {data} = await axios.post('/api/bookings/check-availability', 
       {location: pickupLocation, pickupDate, returnDate})
       if(data.success){
-        setFilteredInstruments(data.availableInstruments)
+        const enriched = (data.availableInstruments || []).map(it => {
+          const r = ratingsSummary?.[it._id];
+          return r ? { ...it, avgRating: r.avgRating, reviewCount: r.count } : it;
+        })
+        setFilteredInstruments(enriched)
         if(data.availableInstruments.length === 0){
           toast.error('No Instruments Available')
         }
@@ -72,6 +77,16 @@ const Instruments = () => {
       setFilteredInstruments(instruments) // Show all instruments when no search params
     }
   }, [pickupLocation, pickupDate, returnDate, instruments])
+  
+  // If ratingsSummary updates while showing availability results, enrich list
+  useEffect(() => {
+    if (isSearchData && filteredInstruments.length > 0) {
+      setFilteredInstruments(prev => prev.map(it => {
+        const r = ratingsSummary?.[it._id];
+        return r ? { ...it, avgRating: r.avgRating, reviewCount: r.count } : it;
+      }))
+    }
+  }, [ratingsSummary])
 
   // Single useEffect for handling search/filter functionality
   useEffect(() => {
@@ -79,6 +94,13 @@ const Instruments = () => {
       applyFilter()
     }
   }, [input, instruments])
+
+  // Initialize input from `q` query param when not using availability search
+  useEffect(() => {
+    if (!isSearchData) {
+      setInput(q)
+    }
+  }, [q, isSearchData])
 
 
   return (

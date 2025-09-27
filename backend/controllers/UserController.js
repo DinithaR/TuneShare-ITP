@@ -90,6 +90,18 @@ export const getInstruments = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
+
+// Get single instrument with owner details
+export const getInstrumentById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const instrument = await Instrument.findById(id).populate('owner', 'name email');
+        if (!instrument) return res.json({ success: false, message: 'Instrument not found' });
+        res.json({ success: true, instrument });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
 import User from "../models/User.js"
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'

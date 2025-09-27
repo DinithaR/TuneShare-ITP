@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 const InstrumentDetails = () => {
   
   const {id} = useParams()
-  const {instruments, axios, pickupDate, setPickupDate, returnDate, setReturnDate, user} = useAppContext()
+  const {instruments, axios, pickupDate, setPickupDate, returnDate, setReturnDate, user, fetchRatingsSummary} = useAppContext()
   const navigate = useNavigate()
   const [instrument, setInstrument] = useState(null)
   const [reviews, setReviews] = useState([])
@@ -76,10 +76,22 @@ const InstrumentDetails = () => {
     const foundInstrument = instruments.find(instrument => instrument._id === id)
     if (foundInstrument) {
       setInstrument(foundInstrument)
+      // Also fetch populated owner details to ensure up-to-date owner info
+      axios.get(`/api/user/instruments/${id}`).then(({data})=>{
+        if (data.success && data.instrument) setInstrument(data.instrument)
+      }).catch(()=>{})
     } else if (instruments.length > 0) {
-      // If instruments are loaded but instrument not found, show error
-      toast.error('Instrument not found')
-      navigate('/instruments')
+      // If instruments are loaded but instrument not found, attempt direct fetch
+      axios.get(`/api/user/instruments/${id}`).then(({data})=>{
+        if (data.success && data.instrument) setInstrument(data.instrument)
+        else {
+          toast.error('Instrument not found')
+          navigate('/instruments')
+        }
+      }).catch(()=>{
+        toast.error('Instrument not found')
+        navigate('/instruments')
+      })
     }
   }, [instruments, id, navigate])
 
@@ -138,6 +150,8 @@ const InstrumentDetails = () => {
         // refresh lists
         setAvgRating(data.stats.avgRating || 0)
         setReviewCount(data.stats.count || 0)
+        // Refresh global ratings so cards update
+        fetchRatingsSummary?.()
         // Update or insert my review into list
         setReviews((prev) => {
           const rest = prev.filter(r => r.user?._id !== user?._id)
@@ -193,14 +207,27 @@ const InstrumentDetails = () => {
                   <span className='text-xs bg-amber-500/90 text-white px-2.5 py-1 rounded-full shadow-sm'>Your Listing</span>
                 )}
               </div>
-              <div className='flex items-center gap-3 mt-2'>
+              <div className='flex items-center gap-3 mt-2 flex-wrap'>
                 <p className='text-gray-500 text-lg'>{instrument.category || 'Musical Instrument'}</p>
                 {reviewCount > 0 && (
                   <span className='text-sm bg-yellow-100 text-yellow-700 px-2 py-1 rounded-md'>
                     ⭐ {avgRating.toFixed(1)} ({reviewCount})
                   </span>
                 )}
+                {instrument?.owner && (
+                  <span className='text-sm bg-blue-50 text-blue-700 px-2 py-1 rounded-md'>
+                    Owner: {instrument.owner.name || 'Unknown'}
+                  </span>
+                )}
               </div>
+              {instrument?.owner && (
+                <div className='mt-1 text-sm text-gray-600'>
+                  <span className='mr-2'>Contact:</span>
+                  <a href={`mailto:${instrument.owner.email}`} className='text-blue-600 underline'>
+                    {instrument.owner.email}
+                  </a>
+                </div>
+              )}
             </div>
             <hr className='border-borderColor my-6'/>
 

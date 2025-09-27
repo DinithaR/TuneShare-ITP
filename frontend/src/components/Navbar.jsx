@@ -9,6 +9,7 @@ function Navbar() {
   const { setShowLogin, user, logout, isOwner, axios, setIsOwner, role, authLoading } = useAppContext();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [navQuery, setNavQuery] = useState('');
   const navigate = useNavigate();
 
   const changeRole = async () => {
@@ -54,11 +55,23 @@ function Navbar() {
           <div className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 bg-white shadow-sm focus-within:shadow-md min-w-[220px] max-w-[320px] flex-1">
             <input
               type="text"
+              value={navQuery}
+              onChange={(e)=>setNavQuery(e.target.value)}
+              onKeyDown={(e)=>{ if(e.key==='Enter'){ const q = navQuery.trim(); if(q){ const params = new URLSearchParams({ q }); navigate(`/instruments?${params.toString()}`); }}}}
               className="flex-1 bg-transparent outline-none text-sm placeholder-gray-400"
-              placeholder="Search anything..."
+              placeholder="Search instruments, brands, locations..."
               style={{ color: '#374151' }}
+              aria-label="Search instruments"
             />
-            <img src={assets.search_icon} alt="Search" className="w-5 h-5 opacity-60" />
+            <button
+              type="button"
+              onClick={()=>{ const q = navQuery.trim(); if(q){ const params = new URLSearchParams({ q }); navigate(`/instruments?${params.toString()}`); }}}
+              className="p-1 rounded hover:bg-gray-100"
+              aria-label="Search"
+              title="Search"
+            >
+              <img src={assets.search_icon} alt="Search" className="w-5 h-5 opacity-60" />
+            </button>
           </div>
 
           {/* Navigation Links */}

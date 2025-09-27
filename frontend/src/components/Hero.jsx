@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { assets, cityList } from '../assets/assets';
 import { useAppContext } from '../context/AppContext';
+import toast from 'react-hot-toast';
 
 const Hero = () => {
   const [pickupLocation, setPickupLocation] = useState('');
@@ -8,9 +9,25 @@ const Hero = () => {
   const {pickupDate, setPickupDate,returnDate, setReturnDate, navigate} = useAppContext()
 
   const handleSearch = (e) => {
-    e.preventDefault()
-    navigate('/instruments?' + pickupLocation + '&pickupDate=' + pickupDate + '&returnDate=' + returnDate)
-  }
+    e.preventDefault();
+
+    if (!pickupLocation || !pickupDate || !returnDate) {
+      toast.error('Please select location, pickup date, and return date');
+      return;
+    }
+
+    if (new Date(returnDate) < new Date(pickupDate)) {
+      toast.error('Return date must be on or after the pickup date');
+      return;
+    }
+
+    const params = new URLSearchParams({
+      pickupLocation,
+      pickupDate,
+      returnDate,
+    });
+    navigate(`/instruments?${params.toString()}`);
+  };
 
   return (
     <div
@@ -79,6 +96,7 @@ const Hero = () => {
               onChange={e => setReturnDate(e.target.value)}
               type="date"
               id="return-date"
+              min={pickupDate || new Date().toISOString().split('T')[0]}
               className="w-full text-sm text-gray-500 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
               required
             />

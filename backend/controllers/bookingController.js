@@ -453,3 +453,59 @@ export const markReturn = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
+
+// Public: Check instrument availability for a location and date range
+export const checkAvailability = async (req, res) => {
+    try {
+        const { location, pickupDate, returnDate, q } = req.body || {};
+        if (!location || !pickupDate || !returnDate) {
+            return res.json({ success: false, message: 'location, pickupDate and returnDate are required' });
+        }
+
+        const start = new Date(pickupDate);
+        const end = new Date(returnDate);
+        if (isNaN(start) || isNaN(end)) {
+            return res.json({ success: false, message: 'Invalid date(s) provided' });
+        }
+        if (end < start) {
+            return res.json({ success: false, message: 'returnDate must be on or after pickupDate' });
+        }
+
+        // Find instruments in the location, currently marked available
+        const baseInstrumentQuery = { location, isAvailable: true };
+
+        // Find bookings that overlap the requested range (excluding cancelled)
+        const overlapping = await Booking.find({
+            status: { $ne: 'cancelled' },
+            pickupDate: { $lte: end },
+            returnDate: { $gte: start }
+        }).select('instrument');
+
+        const blockedInstrumentIds = new Set(overlapping.map(b => String(b.instrument)));
+
+        // Apply optional keyword filtering
+        let instrumentsQuery = Instrument.find(baseInstrumentQuery);
+        if (q && typeof q === 'string' && q.trim()) {
+            const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escaped, 'i');
+            instrumentsQuery = Instrument.find({
+                ...baseInstrumentQuery,
+                $or: [
+                    { brand: regex },
+                    { model: regex },
+                    { category: regex },
+                    { location: regex },
+                    { description: regex }
+                ]
+            });
+        }
+
+        const candidates = await instrumentsQuery.sort({ createdAt: -1 });
+        const availableInstruments = candidates.filter(inst => !blockedInstrumentIds.has(String(inst._id)));
+
+        res.json({ success: true, availableInstruments });
+    } catch (error) {
+        console.error('checkAvailability error:', error);
+        res.json({ success: false, message: 'Failed to check availability' });
+    }
+};

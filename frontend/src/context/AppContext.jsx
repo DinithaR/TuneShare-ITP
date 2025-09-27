@@ -148,6 +148,15 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    // Re-enrich instruments whenever ratingsSummary changes (defensive)
+    useEffect(() => {
+        if (!instruments || instruments.length === 0) return;
+        setInstruments((prev) => prev.map((it) => {
+            const r = ratingsSummary?.[it._id];
+            return r ? { ...it, avgRating: r.avgRating, reviewCount: r.count } : it;
+        }));
+    }, [ratingsSummary]);
+
     // Logout
     const logout = () => {
         localStorage.removeItem('token');
