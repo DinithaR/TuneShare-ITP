@@ -11,6 +11,7 @@ const ManageBookings = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [scope, setScope] = useState('mine') // 'mine' or 'all' (admin only)
 
   const fetchOwnerBookings = async () => {
     try {
@@ -19,11 +20,17 @@ const ManageBookings = () => {
       params.append('page', page)
       params.append('limit', 10)
       if (debouncedSearch) params.append('q', debouncedSearch)
+      if (user?.role === 'admin') {
+        params.append('scope', scope === 'all' ? 'all' : 'mine')
+      }
       const {data} = await axios.get(`/api/bookings/owner?${params.toString()}`)
       if (data.success) {
         // Client-side guard: filter to ensure bookings belong to owner (unless admin scope)
         let list = data.bookings || []
+        // Server now applies scope; additional client guard (non-admin should never see others)
         if (user?.role !== 'admin') {
+          list = list.filter(b => String(b.owner || b.instrument?.owner) === String(user?._id))
+        } else if (scope === 'mine') {
           list = list.filter(b => String(b.owner || b.instrument?.owner) === String(user?._id))
         }
         setBookings(list)
@@ -98,7 +105,7 @@ const ManageBookings = () => {
   useEffect(() => {
     fetchOwnerBookings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, scope])
 
   // Debounce search input
   useEffect(() => {
@@ -108,10 +115,34 @@ const ManageBookings = () => {
 
   return (
     <div className='px-4 pt-10 md:px-10 w-full'>
-      <Title 
-        title="Manage Bookings" 
-        subTitle="Track all customer bookings, approve or cancel requests, and manage bookings statuses." 
-      />
+      <div className='flex items-start justify-between flex-wrap gap-4'>
+        <div>
+          <Title 
+            title="Manage Bookings" 
+            subTitle="Track customer bookings, approve or cancel requests, and manage booking lifecycle." 
+          />
+          <div className='mt-3 flex items-center gap-2'>
+            <span className='inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-white shadow-sm'>
+              Viewing: {user?.role === 'admin' ? (scope === 'all' ? 'All Owners' : 'Your Listings') : 'Your Listings'}
+            </span>
+            {user?.role === 'admin' && scope === 'all' && (
+              <span className='text-[10px] text-gray-500'>Toggle to limit view to only instruments you own.</span>
+            )}
+          </div>
+        </div>
+        {user?.role === 'admin' && (
+          <div className='flex items-center gap-2 bg-white border border-borderColor rounded-md p-1 text-xs shadow-sm'>
+            <button
+              onClick={()=>{ setScope('mine'); setPage(1); }}
+              className={`px-3 py-1 rounded-md font-medium transition-colors ${scope==='mine' ? 'bg-primary text-white' : 'hover:bg-primary/10'}`}
+            >Your Listings</button>
+            <button
+              onClick={()=>{ setScope('all'); setPage(1); }}
+              className={`px-3 py-1 rounded-md font-medium transition-colors ${scope==='all' ? 'bg-primary text-white' : 'hover:bg-primary/10'}`}
+            >All Owners</button>
+          </div>
+        )}
+      </div>
       
       <div className='flex items-center gap-3 mt-6 max-w-3xl'>
         <input 
@@ -219,6 +250,9 @@ const ManageBookings = () => {
                         >
                           {booking.status}
                         </span>
+                        {booking.status === 'cancelled' && booking.cancelledAt && (
+                          <span className='text-[10px] text-red-500 italic'>Cancelled {new Date(booking.cancelledAt).toLocaleDateString()}</span>
+                        )}
                         {/* Operational buttons */}
                         {booking.status === 'confirmed' && booking.paymentStatus === 'paid' && !booking.pickupConfirmedAt && (
                           <button

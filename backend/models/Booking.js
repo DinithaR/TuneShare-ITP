@@ -22,6 +22,9 @@ const instrumentSchema = new mongoose.Schema({
     // Operational lifecycle timestamps
     pickupConfirmedAt: { type: Date }, // set when owner marks instrument as picked up
     returnConfirmedAt: { type: Date }  // set when owner marks instrument as returned
+    ,
+    // Cancellation tracking
+    cancelledAt: { type: Date } // set when user or owner cancels the booking (status -> cancelled)
 },{timestamps: true})
 
 // Helpful indexes for dashboards and webhook lookups
@@ -31,6 +34,7 @@ instrumentSchema.index({ lastWebhookEventId: 1 });
 instrumentSchema.index({ stripeSessionId: 1 });
 instrumentSchema.index({ pickupConfirmedAt: 1 });
 instrumentSchema.index({ returnConfirmedAt: 1 });
+instrumentSchema.index({ cancelledAt: 1 });
 
 const Booking = mongoose.model('Booking', instrumentSchema)
 

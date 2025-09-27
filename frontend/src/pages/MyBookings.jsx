@@ -79,24 +79,25 @@ const MyBookings = () => {
     setPage(1)
   }, [debouncedSearch, paymentStatus, startDate, endDate, status])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this booking?')) return;
+  const handleCancel = async (id) => {
+    if (!window.confirm('Cancel this booking? This action cannot be undone.')) return;
     try {
-      const { data } = await axios.delete(`/api/bookings/user/${id}`);
+      const { data } = await axios.delete(`/api/bookings/user/${id}`); // backend now soft-cancels
       if (data.success) {
-        toast.success('Booking deleted');
-        setBookings(bookings.filter(b => b._id !== id));
+        toast.success('Booking cancelled');
+        // Refresh list to get cancelledAt timestamp
+        setBookings(prev => prev.map(b => b._id === id ? data.booking : b));
       } else {
-                    <img src={booking?.instrument?.image || ''} alt={booking?.instrument?.name || 'Instrument'} className='w-full h-auto aspect-video object-cover'/>
+        toast.error(data.message || 'Cancel failed');
       }
     } catch (error) {
-      toast.error('Delete failed');
+      toast.error('Cancel failed');
     }
   };
 
   const handleEditClick = (booking) => {
     // Disallow editing once the booking has been paid
-    if (booking.paymentStatus === 'paid') return;
+  if (booking.paymentStatus === 'paid' || booking.status === 'cancelled') return;
     setEditId(booking._id);
     setEditData({
       pickupDate: booking.pickupDate.split('T')[0],
@@ -321,11 +322,14 @@ const MyBookings = () => {
                     </div>
                   </>
                 )}
-                {booking.paymentStatus !== 'paid' && (
+                {booking.paymentStatus !== 'paid' && booking.status !== 'cancelled' && (
                   <div className='flex gap-2 mt-4'>
-                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(booking) }} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors'>Edit</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }} className='px-3 py-1 bg-red-500 text-white rounded'>Delete</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(booking) }} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors disabled:opacity-40' disabled={booking.status==='cancelled'}>Edit</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleCancel(booking._id) }} className='px-3 py-1 bg-red-500 text-white rounded'>Cancel</button>
                   </div>
+                )}
+                {booking.status === 'cancelled' && booking.cancelledAt && (
+                  <p className='mt-4 text-xs italic text-red-600'>This booking was cancelled on {new Date(booking.cancelledAt).toLocaleDateString()}</p>
                 )}
               </div>
               {/* Price */}
@@ -358,7 +362,7 @@ const MyBookings = () => {
                   )}
                 </div>
                 {/* Show Pay Now if not paid, else show Cancel if paid and not confirmed */}
-        {booking.paymentStatus !== 'paid' ? (
+        {booking.status === 'cancelled' ? null : booking.paymentStatus !== 'paid' ? (
                   <div className='mt-4'>
                     <button
           onClick={(e) => { e.stopPropagation(); handlePayNow(booking._id) }}
@@ -370,7 +374,7 @@ const MyBookings = () => {
                 ) : booking.status !== 'confirmed' ? (
                   <div className='mt-4'>
                     <button
-          onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }}
+          onClick={(e) => { e.stopPropagation(); handleCancel(booking._id) }}
                       className='w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg mt-2'
                     >
                       Cancel Booking
