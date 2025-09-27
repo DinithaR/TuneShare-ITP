@@ -7,14 +7,27 @@ const ManageBookings = () => {
   const {axios, currency, user} = useAppContext()
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
 
   const fetchOwnerBookings = async () => {
     try {
       setLoading(true)
-      const {data} = await axios.get('/api/bookings/owner')
+      const params = new URLSearchParams()
+      params.append('page', page)
+      params.append('limit', 10)
+      if (debouncedSearch) params.append('q', debouncedSearch)
+      const {data} = await axios.get(`/api/bookings/owner?${params.toString()}`)
       if (data.success) {
-        setBookings(data.bookings)
-        // Optionally we could store scope (data.scope) if backend provided it
+        // Client-side guard: filter to ensure bookings belong to owner (unless admin scope)
+        let list = data.bookings || []
+        if (user?.role !== 'admin') {
+          list = list.filter(b => String(b.owner || b.instrument?.owner) === String(user?._id))
+        }
+        setBookings(list)
+        if (data.totalPages) setTotalPages(data.totalPages)
       } else {
         toast.error(data.message)
       }
@@ -56,7 +69,14 @@ const ManageBookings = () => {
 
   useEffect(() => {
     fetchOwnerBookings()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedSearch])
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400)
+    return () => clearTimeout(t)
+  }, [search])
 
   return (
     <div className='px-4 pt-10 md:px-10 w-full'>
@@ -65,7 +85,20 @@ const ManageBookings = () => {
         subTitle="Track all customer bookings, approve or cancel requests, and manage bookings statuses." 
       />
       
-      <div className='max-w-3xl w-full rounded-md overflow-hidden border border-borderColor mt-6'>
+      <div className='flex items-center gap-3 mt-6 max-w-3xl'>
+        <input 
+          type='text'
+          value={search}
+          onChange={e=>{ setSearch(e.target.value); setPage(1); }}
+          placeholder='Search by instrument, location, status...'
+          className='flex-1 border border-borderColor rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary'
+        />
+        {debouncedSearch && (
+          <button onClick={()=>{ setSearch(''); setDebouncedSearch(''); setPage(1); }} className='text-xs text-gray-500 hover:text-gray-700'>Clear</button>
+        )}
+      </div>
+
+      <div className='max-w-3xl w-full rounded-md overflow-hidden border border-borderColor mt-4'>
         <table className='w-full border-collapse text-left text-sm text-primary-dull'>
           <thead className='text-primary-dull'>
             <tr>
@@ -165,6 +198,28 @@ const ManageBookings = () => {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className='flex gap-2 mt-6 flex-wrap'>
+          <button
+            disabled={page===1}
+            onClick={()=>setPage(p=>Math.max(1,p-1))}
+            className={`px-3 py-1 rounded border text-xs ${page===1?'opacity-40 cursor-not-allowed':'hover:bg-primary/5'}`}
+          >Prev</button>
+          {Array.from({length: totalPages},(_,i)=>i+1).filter(p=> p===1 || p===totalPages || (p>=page-2 && p<=page+2)).map(p => (
+            <button
+              key={p}
+              onClick={()=>setPage(p)}
+              className={`px-3 py-1 rounded border text-xs ${p===page? 'bg-primary text-white border-primary':'hover:bg-primary/5'}`}
+            >{p}</button>
+          ))}
+          <button
+            disabled={page===totalPages}
+            onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
+            className={`px-3 py-1 rounded border text-xs ${page===totalPages?'opacity-40 cursor-not-allowed':'hover:bg-primary/5'}`}
+          >Next</button>
+        </div>
+      )}
     </div>
   )
 }
