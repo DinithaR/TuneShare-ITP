@@ -6,7 +6,7 @@ import { useAppContext } from '../context/AppContext';
 import toast from 'react-hot-toast';
 
 function Navbar() {
-  const { setShowLogin, user, logout, isOwner, axios, setIsOwner, role, authLoading } = useAppContext();
+  const { setShowLogin, openLogin, user, logout, isOwner, axios, setIsOwner, role, authLoading } = useAppContext();
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [navQuery, setNavQuery] = useState('');
@@ -98,12 +98,14 @@ function Navbar() {
                 Admin Dashboard
               </button>
             )}
-            <button
-              onClick={() => isOwner ? navigate('/owner') : changeRole()}
-              className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-gray-100 text-pink-700 hover:bg-gray-200 shadow-sm"
-            >
-              {isOwner ? 'Dashboard' : 'List Instruments'}
-            </button>
+            {user && (
+              <button
+                onClick={() => isOwner ? navigate('/owner') : changeRole()}
+                className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-gray-100 text-pink-700 hover:bg-gray-200 shadow-sm"
+              >
+                {isOwner ? 'Dashboard' : 'List Instruments'}
+              </button>
+            )}
             {user && (
               <div className="flex items-center gap-2 ml-2">
                 <span className="text-primary font-semibold whitespace-nowrap">Welcome, {user.name}!</span>
@@ -120,12 +122,29 @@ function Navbar() {
                 </button>
               </div>
             )}
-            <button
-              onClick={() => user ? logout() : setShowLogin(true)}
-              className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-pink-400 text-white hover:bg-pink-500 shadow-sm ml-2"
-            >
-              {user ? 'Logout' : 'Login'}
-            </button>
+            {user ? (
+              <button
+                onClick={() => logout()}
+                className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-pink-400 text-white hover:bg-pink-500 shadow-sm ml-2"
+              >
+                Logout
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openLogin('login')}
+                  className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-white text-pink-700 border border-pink-300 hover:bg-pink-50 shadow-sm"
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => openLogin('register')}
+                  className="px-4 py-2 font-semibold rounded-lg transition-all duration-200 bg-pink-400 text-white hover:bg-pink-500 shadow-sm"
+                >
+                  Register
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Hamburger Menu Button (Mobile Only) */}
@@ -182,12 +201,14 @@ function Navbar() {
                       Admin Dashboard
                     </button>
                   )}
-                  <button
-                    onClick={() => { setOpen(false); isOwner ? navigate('/owner') : changeRole(); }}
-                    className="w-full py-3 font-semibold rounded-lg bg-gray-100 text-pink-700 hover:bg-gray-200 transition text-lg shadow"
-                  >
-                    {isOwner ? 'Dashboard' : 'List Instruments'}
-                  </button>
+                  {user && (
+                    <button
+                      onClick={() => { setOpen(false); isOwner ? navigate('/owner') : changeRole(); }}
+                      className="w-full py-3 font-semibold rounded-lg bg-gray-100 text-pink-700 hover:bg-gray-200 transition text-lg shadow"
+                    >
+                      {isOwner ? 'Dashboard' : 'List Instruments'}
+                    </button>
+                  )}
                 </div>
                 {/* Profile and Auth */}
                 <div className="flex flex-col items-center gap-3 px-6 py-6 bg-white">
@@ -207,12 +228,29 @@ function Navbar() {
                       </button>
                     </>
                   )}
-                  <button
-                    onClick={() => { setOpen(false); user ? logout() : setShowLogin(true); }}
-                    className="w-full py-3 font-semibold rounded-lg bg-pink-400 text-white hover:bg-pink-500 transition text-lg shadow mt-2"
-                  >
-                    {user ? 'Logout' : 'Login'}
-                  </button>
+                  {user ? (
+                    <button
+                      onClick={() => { setOpen(false); logout(); }}
+                      className="w-full py-3 font-semibold rounded-lg bg-pink-400 text-white hover:bg-pink-500 transition text-lg shadow mt-2"
+                    >
+                      Logout
+                    </button>
+                  ) : (
+                    <div className="w-full flex flex-col gap-2 mt-2">
+                      <button
+                        onClick={() => { setOpen(false); openLogin('login'); }}
+                        className="w-full py-3 font-semibold rounded-lg bg-white text-pink-700 border border-pink-300 hover:bg-pink-50 transition text-lg shadow"
+                      >
+                        Login
+                      </button>
+                      <button
+                        onClick={() => { setOpen(false); openLogin('register'); }}
+                        className="w-full py-3 font-semibold rounded-lg bg-pink-400 text-white hover:bg-pink-500 transition text-lg shadow"
+                      >
+                        Register
+                      </button>
+                    </div>
+                  )}
                 </div>
               </aside>
             </>
