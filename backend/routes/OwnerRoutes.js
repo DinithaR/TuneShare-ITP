@@ -1,6 +1,6 @@
 import express from "express";
 import { protect } from "../middleware/auth.js";
-import { addInstrument, changeRoleToOwner, deleteInstrument, getDashboardData, getOwnerInstruments, toggleInstrumentAvailability, updateInstrument, updateUserImage } from "../controllers/OwnerController.js";
+import { addInstrument, changeRoleToOwner, deleteInstrument, getDashboardData, getOwnerInstruments, toggleInstrumentAvailability, updateInstrument, updateUserImage, generateOwnerReport } from "../controllers/OwnerController.js";
 import upload from "../middleware/multer.js";
 
 
@@ -17,6 +17,7 @@ ownerRouter.post('/delete-instrument', protect, deleteInstrument)
 
 
 ownerRouter.get('/dashboard', protect, getDashboardData) 
+ownerRouter.get('/dashboard/report', protect, generateOwnerReport)
 ownerRouter.post('/update-image', upload.single("image"), protect, updateUserImage)
 
 
