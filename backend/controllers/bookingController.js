@@ -6,13 +6,18 @@ import mongoose from 'mongoose';
 export const getOwnerBookings = async (req, res) => {
     try {
         const { _id, role } = req.user; // role validated by isOwner
-        const { page = 1, limit = 20, q, status, paymentStatus } = req.query;
+    const { page = 1, limit = 20, q, status, paymentStatus, scope } = req.query;
+        // scope (admin only): ?scope=all to view every booking, otherwise defaults to admin's own listings ("mine")
 
         const pageNum = Math.max(parseInt(page) || 1, 1);
         const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
 
-        // Base query: only this owner's bookings unless admin
-        const baseQuery = role === 'admin' ? {} : { owner: _id };
+        // Determine scope: admins can request 'all' or 'mine'; owners always 'mine'
+        let effectiveScope = 'owner';
+        if (role === 'admin') {
+            effectiveScope = scope === 'all' ? 'all' : (scope === 'mine' ? 'owner' : 'all');
+        }
+        const baseQuery = effectiveScope === 'all' ? {} : { owner: _id };
 
         if (status) {
             const statuses = status.split(',').map(s => s.trim().toLowerCase()).filter(s => ['pending','confirmed','cancelled'].includes(s));
@@ -42,7 +47,7 @@ export const getOwnerBookings = async (req, res) => {
                 limit: pageSize,
                 total,
                 totalPages: Math.ceil(total / pageSize),
-                scope: role === 'admin' ? 'all' : 'owner'
+                scope: effectiveScope
             });
         }
 
@@ -76,7 +81,7 @@ export const getOwnerBookings = async (req, res) => {
             limit: pageSize,
             total,
             totalPages: Math.ceil(total / pageSize),
-            scope: role === 'admin' ? 'all' : 'owner'
+            scope: effectiveScope
         });
     } catch (error) {
         console.log(error.message);
@@ -113,7 +118,16 @@ export const changeBookingStatus = async (req, res) => {
             return res.json({ success: false, message: 'Cannot confirm before payment is completed.' });
         }
 
+        const previousStatus = booking.status;
         booking.status = status;
+        // If moving to cancelled and no timestamp yet, set cancelledAt
+        if (status === 'cancelled' && !booking.cancelledAt) {
+            booking.cancelledAt = new Date();
+        }
+        // If status changed away from cancelled (edge case), clear timestamp
+        if (previousStatus === 'cancelled' && status !== 'cancelled') {
+            booking.cancelledAt = undefined;
+        }
         await booking.save();
 
         res.json({ 
@@ -319,12 +333,18 @@ export const deleteUserBooking = async (req, res) => {
         const booking = await Booking.findOne({ _id: id, user: _id });
         if (!booking) return res.json({ success: false, message: "Booking not found" });
 
+        // Prevent cancelling confirmed booking (business rule remains)
         if (booking.status === 'confirmed') {
             return res.json({ success: false, message: "Cannot cancel a confirmed booking." });
         }
-
-        await booking.deleteOne();
-        res.json({ success: true, message: "Booking deleted" });
+        if (booking.status === 'cancelled') {
+            return res.json({ success: true, message: "Booking already cancelled", booking });
+        }
+        // Soft-cancel: we do not delete the booking record; retain for audit & analytics
+        booking.status = 'cancelled';
+        booking.cancelledAt = new Date();
+        await booking.save();
+        res.json({ success: true, message: "Booking cancelled", booking });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }
