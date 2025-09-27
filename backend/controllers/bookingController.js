@@ -140,6 +140,11 @@ export const createBooking = async (req, res) => {
             return res.json({ success: false, message: "Instrument not found" });
         }
 
+        // Prevent owner from booking own instrument
+        if (instrumentData.owner && instrumentData.owner.toString() === _id.toString()) {
+            return res.json({ success: false, message: "Owners cannot book their own instruments." });
+        }
+
         if (!instrumentData.isAvailable) {
             return res.json({ success: false, message: "Instrument not available" });
         }
@@ -320,6 +325,65 @@ export const deleteUserBooking = async (req, res) => {
 
         await booking.deleteOne();
         res.json({ success: true, message: "Booking deleted" });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Owner marks that the renter has picked up the instrument
+export const markPickup = async (req, res) => {
+    try {
+        const { bookingId } = req.body;
+        const { _id: ownerId, role } = req.user;
+        const booking = await Booking.findById(bookingId).populate('instrument');
+        if (!booking) return res.json({ success: false, message: 'Booking not found' });
+        if (role !== 'admin' && booking.owner.toString() !== ownerId.toString()) {
+            return res.json({ success: false, message: 'Unauthorized' });
+        }
+        if (booking.paymentStatus !== 'paid' || booking.status !== 'confirmed') {
+            return res.json({ success: false, message: 'Cannot mark pickup until booking is paid and confirmed.' });
+        }
+        if (booking.pickupConfirmedAt) {
+            return res.json({ success: false, message: 'Pickup already marked.' });
+        }
+        // Set pickup timestamp
+        booking.pickupConfirmedAt = new Date();
+        // Make instrument unavailable
+        if (booking.instrument && booking.instrument.isAvailable) {
+            booking.instrument.isAvailable = false;
+            await booking.instrument.save();
+        }
+        await booking.save();
+        res.json({ success: true, message: 'Pickup marked successfully', booking });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Owner marks that the renter has returned the instrument
+export const markReturn = async (req, res) => {
+    try {
+        const { bookingId } = req.body;
+        const { _id: ownerId, role } = req.user;
+        const booking = await Booking.findById(bookingId).populate('instrument');
+        if (!booking) return res.json({ success: false, message: 'Booking not found' });
+        if (role !== 'admin' && booking.owner.toString() !== ownerId.toString()) {
+            return res.json({ success: false, message: 'Unauthorized' });
+        }
+        if (!booking.pickupConfirmedAt) {
+            return res.json({ success: false, message: 'Pickup not yet marked.' });
+        }
+        if (booking.returnConfirmedAt) {
+            return res.json({ success: false, message: 'Return already marked.' });
+        }
+        booking.returnConfirmedAt = new Date();
+        // Make instrument available again
+        if (booking.instrument && !booking.instrument.isAvailable) {
+            booking.instrument.isAvailable = true;
+            await booking.instrument.save();
+        }
+        await booking.save();
+        res.json({ success: true, message: 'Return marked successfully', booking });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }

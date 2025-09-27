@@ -1,17 +1,24 @@
 import React from 'react'
+import { useAppContext } from '../context/AppContext'
 import { assets } from '../assets/assets'
 import { useNavigate } from 'react-router-dom'
 
 const InstrumentCard = ({ instrument }) => {
     const currency = import.meta.env.VITE_CURRENCY
+    const { user } = useAppContext()
     const navigate = useNavigate()
 
     return (
         <div onClick={()=> {navigate(`/instrument-details/${instrument._id}`); scrollTo(0,0)}} className='group rounded-xl overflow-hidden shadow-lg hover:-translate-y-1 transition-all duration-500 cursor-pointer'>
             <div className='relative h-48 overflow-hidden'>
                 <img src={instrument.image} alt="Instrument Image" className='w-full h-full object-cover transition-transform duration-500 group-hover:scale-105' />
-                {instrument.isAvailable && (
-                    <p className='absolute top-4 bg-primary/90 text-white text-xs px-2.5 py-1 rounded-full'>Available Now</p>
+                {instrument.isAvailable ? (
+                    <p className='absolute top-4 left-4 bg-primary/90 text-white text-xs px-2.5 py-1 rounded-full shadow-md'>Available Now</p>
+                ) : (
+                    <p className='absolute top-4 left-4 bg-red-600/90 text-white text-xs px-2.5 py-1 rounded-full shadow-md'>Unavailable</p>
+                )}
+                {user && instrument.owner === user._id && (
+                  <p className='absolute top-4 right-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-md backdrop-blur-sm'>Your Listing</p>
                 )}
                 <div className='absolute bottom-4 right-4 flex flex-col items-end gap-2'>
                     {instrument.avgRating ? (

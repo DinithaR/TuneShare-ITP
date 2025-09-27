@@ -25,6 +25,10 @@ const InstrumentDetails = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!instrument?.isAvailable) {
+      toast.error('Instrument currently unavailable');
+      return;
+    }
     
     // Add validation before sending request
     if (!pickupDate || !returnDate) {
@@ -181,9 +185,14 @@ const InstrumentDetails = () => {
           )}
           <div className='space-y-6'>
             <div>
-              <h1 className='text-3xl font-bold text-gray-800'>
-                {instrument.brand || ''} {instrument.model || instrument.name || 'Instrument'}
-              </h1>
+              <div className='flex items-center flex-wrap gap-3'>
+                <h1 className='text-3xl font-bold text-gray-800'>
+                  {instrument.brand || ''} {instrument.model || instrument.name || 'Instrument'}
+                </h1>
+                {user && instrument.owner === user._id && (
+                  <span className='text-xs bg-amber-500/90 text-white px-2.5 py-1 rounded-full shadow-sm'>Your Listing</span>
+                )}
+              </div>
               <div className='flex items-center gap-3 mt-2'>
                 <p className='text-gray-500 text-lg'>{instrument.category || 'Musical Instrument'}</p>
                 {reviewCount > 0 && (
@@ -276,7 +285,7 @@ const InstrumentDetails = () => {
         
         {/* Right: Booking Form */}
         <div className='lg:sticky lg:top-20 lg:h-fit'>
-          <form onSubmit={handleSubmit} className='bg-white shadow-lg rounded-xl p-6 space-y-6 border border-borderColor'>
+          <form onSubmit={handleSubmit} className={`bg-white shadow-lg rounded-xl p-6 space-y-6 border border-borderColor ${(!instrument.isAvailable || (user && instrument.owner === user._id)) ? 'opacity-60 pointer-events-none' : ''}`}>
               <div className='flex items-center justify-between'>
                 <span className='text-2xl text-primary-dull font-semibold'>
                   {currency}{instrument.pricePerDay || 0}
@@ -284,6 +293,16 @@ const InstrumentDetails = () => {
                 <span className='text-base text-gray-400 font-normal'>per day</span>
               </div>
               <hr className='border-borderColor'/>
+              {!instrument.isAvailable && (
+                <div className='p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-md'>
+                  This instrument is currently rented out and unavailable for new bookings.
+                </div>
+              )}
+              {user && instrument.owner === user._id && instrument.isAvailable && (
+                <div className='p-3 bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-md'>
+                  You are the owner of this instrument. Owners cannot create bookings for their own listings.
+                </div>
+              )}
               <div className='space-y-4'>
                 <div className='flex flex-col gap-2'>
                   <label htmlFor="pickup-date" className='text-sm font-medium text-primary-dull'>
@@ -314,13 +333,16 @@ const InstrumentDetails = () => {
               </div>
               <button 
                 type="submit"
-                className='w-full bg-primary hover:bg-primary-dull transition-colors duration-200 py-3 font-medium text-white rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2'
+                disabled={!instrument.isAvailable || (user && instrument.owner === user._id)}
+                className={`w-full transition-colors duration-200 py-3 font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${instrument.isAvailable && !(user && instrument.owner === user._id) ? 'bg-primary hover:bg-primary-dull cursor-pointer' : 'bg-gray-400 cursor-not-allowed'}`}
               >
-                Book Now
+                {!instrument.isAvailable ? 'Unavailable' : (user && instrument.owner === user._id) ? 'Owner Cannot Book' : 'Book Now'}
               </button>
-              <p className='text-center text-sm text-gray-500'>
-                No credit card required to reserve
-              </p>
+              {instrument.isAvailable && !(user && instrument.owner === user._id) && (
+                <p className='text-center text-sm text-gray-500'>
+                  No credit card required to reserve
+                </p>
+              )}
             </form>
         </div>
       </div>
