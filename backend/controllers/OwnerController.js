@@ -3,6 +3,7 @@ import Booking from "../models/Booking.js";
 import Instrument from "../models/Instrument.js";
 import User from "../models/User.js";
 import fs from "fs";
+import PDFDocument from 'pdfkit';
 
 // API to change Role as User
 export const changeRoleToOwner = async (req, res)=>{
@@ -271,5 +272,211 @@ export const updateUserImage = async (req,res) => {
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message})
+    }
+}
+
+// API to generate revenue & bookings report (CSV or JSON)
+export const generateOwnerReport = async (req, res) => {
+    try {
+        const { _id, role } = req.user;
+        if (role !== 'owner' && role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Unauthorized' });
+        }
+
+        const { startDate, endDate } = req.query; // format removed – always PDF
+
+        const query = { owner: _id };
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) query.createdAt.$gte = new Date(startDate);
+            if (endDate) {
+                // include entire end date day
+                const d = new Date(endDate);
+                d.setHours(23,59,59,999);
+                query.createdAt.$lte = d;
+            }
+        }
+
+        // Only confirmed bookings count toward revenue
+        const bookings = await Booking.find(query).populate('instrument');
+        const confirmed = bookings.filter(b => b.status === 'confirmed');
+        const totalRevenue = confirmed.reduce((sum, b) => sum + (b.price || 0), 0);
+        const avgBookingValue = confirmed.length ? (totalRevenue / confirmed.length) : 0;
+
+        const summary = {
+            ownerId: _id.toString(),
+            period: {
+                start: startDate || null,
+                end: endDate || null
+            },
+            generatedAt: new Date().toISOString(),
+            totalBookings: bookings.length,
+            confirmedBookings: confirmed.length,
+            pendingBookings: bookings.filter(b => b.status === 'pending').length,
+            cancelledBookings: bookings.filter(b => b.status === 'cancelled').length,
+            totalRevenue,
+            avgBookingValue: Number(avgBookingValue.toFixed(2))
+        };
+
+        // Always build PDF
+    // Reduced top margin slightly to allow title to appear visually higher
+    const doc = new PDFDocument({ margin: { top: 28, bottom: 36, left: 36, right: 36 }, size: 'A4' });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        doc.on('end', () => {
+            const pdfBuffer = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=owner-report-${Date.now()}.pdf`);
+            res.setHeader('Content-Length', pdfBuffer.length);
+            res.send(pdfBuffer);
+        });
+
+        const primaryColor = '#F472B6';
+        const lightBorder = '#e5e7eb';
+        const grayText = '#374151';
+        const mutedText = '#6b7280';
+
+        // Header with title and period box
+        const header = () => {
+            // Start a bit higher manually if first page
+            if (doc.page.number === 1) {
+                doc.y = 24; // manual vertical position
+            }
+            doc.fillColor(primaryColor).fontSize(22).text('Owner Revenue & Bookings Report', { align: 'left' });
+            const titleBottomY = doc.y; // capture after title
+            // Generated timestamp on same top band (right aligned)
+            doc.fillColor(mutedText).fontSize(9).text(`Generated: ${new Date(summary.generatedAt).toLocaleString()}` , {
+                align: 'right'
+            });
+            doc.moveDown(0.25);
+            doc.fillColor(grayText).fontSize(10).text(`Period: ${summary.period.start || 'N/A'} to ${summary.period.end || 'N/A'}`);
+            doc.moveDown(0.3);
+            doc.strokeColor(lightBorder).moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+            doc.moveDown(0.5);
+        };
+
+        header();
+
+        // Page footer with page numbers
+        let pageNumber = 1;
+        const footer = () => {
+            doc.fontSize(8).fillColor(mutedText);
+            const bottom = doc.page.height - doc.page.margins.bottom + 10;
+            doc.text(`Page ${pageNumber}`, doc.page.margins.left, bottom, { align: 'center', width: doc.page.width - doc.page.margins.left - doc.page.margins.right });
+            pageNumber++;
+        };
+        doc.on('pageAdded', () => {
+            header();
+        });
+
+        // Summary metric grid
+        const summaryData = [
+            { label: 'Total Bookings', value: summary.totalBookings },
+            { label: 'Confirmed', value: summary.confirmedBookings },
+            { label: 'Pending', value: summary.pendingBookings },
+            { label: 'Cancelled', value: summary.cancelledBookings },
+            { label: 'Total Revenue', value: summary.totalRevenue.toFixed(2) },
+            { label: 'Avg Booking Value', value: summary.avgBookingValue.toFixed(2) }
+        ];
+        const boxWidth = (doc.page.width - doc.page.margins.left - doc.page.margins.right - 20) / 3; // 3 per row
+        const boxHeight = 55;
+        let x = doc.page.margins.left;
+        let y = doc.y;
+        summaryData.forEach((item, idx) => {
+            doc.roundedRect(x, y, boxWidth, boxHeight, 6).strokeColor(lightBorder).lineWidth(1).stroke();
+            doc.fillColor(mutedText).fontSize(8).text(item.label.toUpperCase(), x + 8, y + 8, { width: boxWidth - 16 });
+            doc.fillColor(primaryColor).fontSize(16).text(item.value, x + 8, y + 22, { width: boxWidth - 16 });
+            x += boxWidth + 10;
+            if ((idx + 1) % 3 === 0) { // new row
+                x = doc.page.margins.left;
+                y += boxHeight + 10;
+            }
+        });
+        doc.moveDown();
+        doc.y = y + boxHeight + 15;
+
+        // Per-instrument aggregation table
+        const instrumentMap = {};
+        bookings.forEach(b => {
+            if (!b.instrument) return;
+            const key = b.instrument._id.toString();
+            if (!instrumentMap[key]) {
+                instrumentMap[key] = { brand: b.instrument.brand, model: b.instrument.model, totalRevenue: 0, confirmed: 0 };
+            }
+            if (b.status === 'confirmed') {
+                instrumentMap[key].totalRevenue += (b.price || 0);
+                instrumentMap[key].confirmed += 1;
+            }
+        });
+        const instrumentRows = Object.values(instrumentMap).sort((a,b)=> b.totalRevenue - a.totalRevenue);
+        if (instrumentRows.length) {
+            doc.fillColor(grayText).fontSize(12).text('Per-Instrument Revenue', { underline: true });
+            doc.moveDown(0.4);
+            // Table header
+            const startX = doc.page.margins.left;
+            const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+            const colWidths = [tableWidth*0.45, tableWidth*0.2, tableWidth*0.2, tableWidth*0.15];
+            let rowY = doc.y;
+            const drawRow = (cols, isHeader=false, zebra=false) => {
+                if (rowY + 20 > doc.page.height - doc.page.margins.bottom) { doc.addPage(); rowY = doc.y; }
+                if (zebra) {
+                    doc.rect(startX, rowY - 2, tableWidth, 18).fillOpacity(0.07).fill(primaryColor).fillOpacity(1);
+                }
+                doc.fillColor(isHeader ? primaryColor : grayText).fontSize(isHeader ? 9 : 8).font(isHeader ? 'Helvetica-Bold' : 'Helvetica');
+                let cx = startX + 4; cols.forEach((c,i)=>{ doc.text(String(c), cx, rowY, { width: colWidths[i]-8, continued: false }); cx += colWidths[i]; });
+                rowY += 18;
+            };
+            drawRow(['Instrument','Confirmed','Total Revenue','Avg Value'], true);
+            instrumentRows.forEach((r, idx) => {
+                const avg = r.confirmed ? (r.totalRevenue / r.confirmed).toFixed(2) : '0.00';
+                drawRow([`${r.brand || ''} ${r.model || ''}`.trim(), r.confirmed, r.totalRevenue.toFixed(2), avg], false, idx % 2 === 0);
+            });
+            doc.moveDown();
+            doc.y = rowY + 6;
+        }
+
+        // Bookings table (paginated, zebra stripes)
+        doc.fillColor(grayText).fontSize(12).text('Bookings', { underline: true });
+        doc.moveDown(0.4);
+        const tableStartX = doc.page.margins.left;
+        const tableWidth2 = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        const colWidths2 = [tableWidth2*0.09, tableWidth2*0.28, tableWidth2*0.12, tableWidth2*0.12, tableWidth2*0.13, tableWidth2*0.13, tableWidth2*0.13];
+        let rowY2 = doc.y;
+        const headerRow = ['ID','Instrument','Status','Price','Created','Pickup','Return'];
+        const drawBookingRow = (cols, isHeader=false, zebra=false) => {
+            if (rowY2 + 20 > doc.page.height - doc.page.margins.bottom) { footer(); doc.addPage(); rowY2 = doc.y; }
+            if (zebra) {
+                doc.rect(tableStartX, rowY2 - 2, tableWidth2, 18).fillOpacity(0.06).fill(primaryColor).fillOpacity(1);
+            }
+            doc.fillColor(isHeader ? primaryColor : grayText).fontSize(isHeader ? 8.5 : 7.5).font(isHeader ? 'Helvetica-Bold' : 'Helvetica');
+            let cx = tableStartX + 3; cols.forEach((c,i)=>{ doc.text(String(c), cx, rowY2, { width: colWidths2[i]-6, continued: false }); cx += colWidths2[i]; });
+            rowY2 += 18;
+        };
+        drawBookingRow(headerRow, true);
+        bookings.forEach((b, idx) => {
+            if (idx >= 2000) return; // hard upper cap
+            const instrumentName = b.instrument ? `${b.instrument.brand || ''} ${b.instrument.model || ''}`.trim().slice(0,30) : 'N/A';
+            const line = [
+                b._id.toString().slice(-6),
+                instrumentName,
+                b.status,
+                (b.price || 0).toFixed(2),
+                b.createdAt ? b.createdAt.toISOString().split('T')[0] : '',
+                b.pickupDate ? new Date(b.pickupDate).toISOString().split('T')[0] : '',
+                b.returnDate ? new Date(b.returnDate).toISOString().split('T')[0] : ''
+            ];
+            drawBookingRow(line, false, idx % 2 === 0);
+        });
+        if (bookings.length > 2000) {
+            doc.moveDown().fontSize(8).fillColor(primaryColor).text(`Note: Truncated to 2000 of ${bookings.length} bookings.`);
+        }
+
+        footer();
+
+    doc.end();
+    return;
+    } catch (error) {
+        console.log(error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
 }

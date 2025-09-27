@@ -16,6 +16,9 @@ const Dashboard = () => {
     recentBookings: [],
     monthlyRevenue: 0,
   })
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [downloading, setDownloading] = useState(false)
 
   const dashboardCards = [
     {title: "Total Instruments", value: data.totalInstruments, icon: assets.instrumentIconColored},
@@ -43,6 +46,39 @@ const Dashboard = () => {
     }
   },[isOwner])
 
+  const downloadReport = async () => {
+    try {
+      setDownloading(true)
+      const params = new URLSearchParams()
+      if(startDate) params.append('startDate', startDate)
+      if(endDate) params.append('endDate', endDate)
+      const url = `/api/owner/dashboard/report?${params.toString()}`
+      const response = await axios.get(url, { responseType: 'blob', headers: { 'Accept': 'application/pdf' } })
+      const contentType = response.headers['content-type'] || ''
+      if(!contentType.includes('application/pdf')){
+        // Try to parse blob as text/json for error message
+        const text = await response.data.text?.() || await new Response(response.data).text()
+        try {
+          const json = JSON.parse(text)
+          return toast.error(json.message || 'Unexpected response (not PDF)')
+        } catch {
+          return toast.error('Unexpected non-PDF response')
+        }
+      }
+      const blob = response.data
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `owner-report-${Date.now()}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className='px-4 pt-10 md:px-10 flex-1 bg-light min-h-screen'>
       <Title 
@@ -65,6 +101,27 @@ const Dashboard = () => {
       </div>
 
       <div className='flex flex-wrap items-start gap-6 mb-8 w-full'>
+        {/* Report Generation (PDF only) */}
+        <div className='p-4 md:p-6 border border-borderColor rounded-md w-full bg-white shadow-sm'>
+          <h1 className='text-lg font-medium text-primary-dull'>Generate Report</h1>
+            <p className='text-primary-dull/70 mb-4 text-sm'>Export bookings & revenue summary as a PDF for a selected period.</p>
+            <div className='grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4'>
+              <div className='flex flex-col'>
+                <label className='text-xs text-primary-dull/70 mb-1'>Start Date</label>
+                <input type='date' value={startDate} onChange={e=>setStartDate(e.target.value)} className='border border-borderColor rounded px-2 py-1 text-sm'/>
+              </div>
+              <div className='flex flex-col'>
+                <label className='text-xs text-primary-dull/70 mb-1'>End Date</label>
+                <input type='date' value={endDate} onChange={e=>setEndDate(e.target.value)} className='border border-borderColor rounded px-2 py-1 text-sm'/>
+              </div>
+              <div className='flex items-end'>
+                <button disabled={downloading} onClick={downloadReport} className='bg-primary text-white text-sm px-4 py-2 rounded disabled:opacity-50 w-full'>
+                  {downloading ? 'Generating...' : 'Download'}
+                </button>
+              </div>
+            </div>
+            <p className='text-xs text-primary-dull/60'>Leaving dates empty will export the full history. Confirmed bookings determine revenue totals.</p>
+        </div>
         
         {/* recent booking */}
         <div className='p-4 md:p-6 border border-borderColor rounded-md max-w-lg w-full bg-white shadow-sm'>
