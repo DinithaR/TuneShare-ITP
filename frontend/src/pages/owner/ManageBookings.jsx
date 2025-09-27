@@ -203,7 +203,14 @@ const ManageBookings = () => {
                   </td>
 
                   <td className='p-3'>
-                    {currency}{booking.price || 0}
+                    <div className='space-y-0.5'>
+                      <div>Total: {currency}{booking.price || 0}</div>
+                      {booking.lateFee > 0 && (
+                        <div className='text-amber-700 text-xs bg-amber-50 inline-block px-2 py-0.5 rounded'>
+                          Late Fee: {currency}{booking.lateFee} {booking.lateFeePaid ? '(paid)' : '(unpaid)'}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   <td className='p-3 max-md:hidden'>

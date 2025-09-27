@@ -24,7 +24,12 @@ const instrumentSchema = new mongoose.Schema({
     returnConfirmedAt: { type: Date }  // set when owner marks instrument as returned
     ,
     // Cancellation tracking
-    cancelledAt: { type: Date } // set when user or owner cancels the booking (status -> cancelled)
+    cancelledAt: { type: Date }, // set when user or owner cancels the booking (status -> cancelled)
+    // Late return tracking
+    lateDays: { type: Number, default: 0 }, // number of days returned late
+    lateFee: { type: Number, default: 0 },   // late fee calculated in same currency as pricePerDay (display currency)
+    lateFeePaid: { type: Boolean, default: false },
+    lateFeePaidAt: { type: Date },
 },{timestamps: true})
 
 // Helpful indexes for dashboards and webhook lookups
@@ -35,6 +40,7 @@ instrumentSchema.index({ stripeSessionId: 1 });
 instrumentSchema.index({ pickupConfirmedAt: 1 });
 instrumentSchema.index({ returnConfirmedAt: 1 });
 instrumentSchema.index({ cancelledAt: 1 });
+instrumentSchema.index({ lateFeePaid: 1 });
 
 const Booking = mongoose.model('Booking', instrumentSchema)
 
