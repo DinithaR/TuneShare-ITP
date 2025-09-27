@@ -314,9 +314,34 @@ export const updateUserBooking = async (req, res) => {
     const booking = await Booking.findOne({ _id: id, user: _id });
     if (!booking) return res.json({ success: false, message: "Booking not found" });
 
-    booking.pickupDate = pickupDate || booking.pickupDate;
-    booking.returnDate = returnDate || booking.returnDate;
-    await booking.save();
+        // Disallow editing if already paid or cancelled (client guards too)
+        if (booking.paymentStatus === 'paid' || booking.status === 'cancelled') {
+            return res.json({ success: false, message: 'Cannot edit a paid or cancelled booking' });
+        }
+
+        // Determine new dates
+        const newPickup = pickupDate ? new Date(pickupDate) : new Date(booking.pickupDate);
+        const newReturn = returnDate ? new Date(returnDate) : new Date(booking.returnDate);
+        if (isNaN(newPickup) || isNaN(newReturn)) {
+            return res.json({ success: false, message: 'Invalid date(s) provided' });
+        }
+        if (newReturn <= newPickup) {
+            return res.json({ success: false, message: 'Return date must be after pickup date' });
+        }
+
+        // Recalculate price based on instrument's pricePerDay
+        const instrument = await Instrument.findById(booking.instrument);
+        if (!instrument) {
+            return res.json({ success: false, message: 'Instrument not found for this booking' });
+        }
+        const msInDay = 24 * 60 * 60 * 1000;
+        const days = Math.max(1, Math.ceil((newReturn - newPickup) / msInDay));
+        const newPrice = days * (instrument.pricePerDay || 0);
+
+        booking.pickupDate = newPickup;
+        booking.returnDate = newReturn;
+        booking.price = newPrice;
+        await booking.save();
 
     res.json({ success: true, message: "Booking updated", booking });
   } catch (error) {
