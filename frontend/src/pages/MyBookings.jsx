@@ -95,6 +95,8 @@ const MyBookings = () => {
   };
 
   const handleEditClick = (booking) => {
+    // Disallow editing once the booking has been paid
+    if (booking.paymentStatus === 'paid') return;
     setEditId(booking._id);
     setEditData({
       pickupDate: booking.pickupDate.split('T')[0],
@@ -319,10 +321,12 @@ const MyBookings = () => {
                     </div>
                   </>
                 )}
-                <div className='flex gap-2 mt-4'>
-                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(booking) }} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors'>Edit</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }} className='px-3 py-1 bg-red-500 text-white rounded'>Delete</button>
-                </div>
+                {booking.paymentStatus !== 'paid' && (
+                  <div className='flex gap-2 mt-4'>
+                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(booking) }} className='px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white rounded transition-colors'>Edit</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(booking._id) }} className='px-3 py-1 bg-red-500 text-white rounded'>Delete</button>
+                  </div>
+                )}
               </div>
               {/* Price */}
               <div className='md:col-span-1 flex flex-col justify-between gap-6'>

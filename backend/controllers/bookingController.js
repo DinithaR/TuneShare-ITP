@@ -6,19 +6,78 @@ import mongoose from 'mongoose';
 export const getOwnerBookings = async (req, res) => {
     try {
         const { _id, role } = req.user; // role validated by isOwner
+        const { page = 1, limit = 20, q, status, paymentStatus } = req.query;
 
-        let query = { owner: _id };
-        if (role === 'admin') {
-            // Admin can see all bookings
-            query = {};
+        const pageNum = Math.max(parseInt(page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+
+        // Base query: only this owner's bookings unless admin
+        const baseQuery = role === 'admin' ? {} : { owner: _id };
+
+        if (status) {
+            const statuses = status.split(',').map(s => s.trim().toLowerCase()).filter(s => ['pending','confirmed','cancelled'].includes(s));
+            if (statuses.length === 1) baseQuery.status = statuses[0];
+            else if (statuses.length > 1) baseQuery.status = { $in: statuses };
         }
 
-        const bookings = await Booking.find(query)
-            .populate('instrument')
-            .populate('user', 'name email')
-            .sort({ createdAt: -1 });
+        if (paymentStatus && ['paid','pending'].includes(paymentStatus)) {
+            baseQuery.paymentStatus = paymentStatus;
+        }
 
-        res.json({ success: true, bookings, scope: role === 'admin' ? 'all' : 'owner' });
+        // If no search query, simple find with pagination
+        if (!q) {
+            const [bookings, total] = await Promise.all([
+                Booking.find(baseQuery)
+                    .populate('instrument')
+                    .populate('user', 'name email')
+                    .sort({ createdAt: -1 })
+                    .skip((pageNum - 1) * pageSize)
+                    .limit(pageSize),
+                Booking.countDocuments(baseQuery)
+            ]);
+            return res.json({
+                success: true,
+                bookings,
+                page: pageNum,
+                limit: pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+                scope: role === 'admin' ? 'all' : 'owner'
+            });
+        }
+
+        // Search across instrument fields and booking status
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'i');
+        const pipeline = [
+            { $match: baseQuery },
+            { $lookup: { from: 'instruments', localField: 'instrument', foreignField: '_id', as: 'instrument' } },
+            { $unwind: '$instrument' },
+            { $match: { $or: [
+                { 'instrument.brand': regex },
+                { 'instrument.model': regex },
+                { 'instrument.category': regex },
+                { 'instrument.location': regex },
+                { status: regex }
+            ]}},
+            { $sort: { createdAt: -1 } },
+            { $facet: {
+                data: [ { $skip: (pageNum - 1) * pageSize }, { $limit: pageSize } ],
+                totalCount: [ { $count: 'count' } ]
+            }}
+        ];
+        const agg = await Booking.aggregate(pipeline);
+        const data = agg[0]?.data || [];
+        const total = agg[0]?.totalCount?.[0]?.count || 0;
+        res.json({
+            success: true,
+            bookings: data,
+            page: pageNum,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+            scope: role === 'admin' ? 'all' : 'owner'
+        });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
