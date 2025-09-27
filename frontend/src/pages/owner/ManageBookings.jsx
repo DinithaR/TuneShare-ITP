@@ -11,6 +11,7 @@ const ManageBookings = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [scope, setScope] = useState('owner') // 'owner' | 'all' (admin only)
 
   const fetchOwnerBookings = async () => {
     try {
@@ -19,12 +20,18 @@ const ManageBookings = () => {
       params.append('page', page)
       params.append('limit', 10)
       if (debouncedSearch) params.append('q', debouncedSearch)
+      if (user?.role === 'admin') params.append('scope', scope)
       const {data} = await axios.get(`/api/bookings/owner?${params.toString()}`)
       if (data.success) {
-        // Client-side guard: filter to ensure bookings belong to owner (unless admin scope)
         let list = data.bookings || []
-        if (user?.role !== 'admin') {
-          list = list.filter(b => String(b.owner || b.instrument?.owner) === String(user?._id))
+        // Defensive guard: ensure only this owner's bookings (API already scopes, but keep UI safe)
+        if (user?.role !== 'admin' || scope === 'owner') {
+            const uid = String(user?._id)
+            const filtered = list.filter(b => String(b.owner || b.instrument?.owner) === uid)
+            if (filtered.length !== list.length) {
+              console.warn('Filtered out bookings not owned by this user in UI safeguard')
+            }
+            list = filtered
         }
         setBookings(list)
         if (data.totalPages) setTotalPages(data.totalPages)
@@ -70,7 +77,7 @@ const ManageBookings = () => {
   useEffect(() => {
     fetchOwnerBookings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, scope])
 
   // Debounce search input
   useEffect(() => {
@@ -80,10 +87,39 @@ const ManageBookings = () => {
 
   return (
     <div className='px-4 pt-10 md:px-10 w-full'>
-      <Title 
-        title="Manage Bookings" 
-        subTitle="Track all customer bookings, approve or cancel requests, and manage bookings statuses." 
-      />
+      <div className='flex flex-col md:flex-row md:items-start md:justify-between gap-4'>
+        <Title 
+          title="Manage Bookings" 
+          subTitle="Track all customer bookings, approve or cancel requests, and manage bookings statuses." 
+        />
+        <div className='flex flex-col items-start gap-2 md:items-end'>
+          <div className='flex items-center gap-2'>
+            <span
+              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border
+                ${ (user?.role === 'admin' && scope === 'all')
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-violet-50 text-violet-700 border-violet-200'}`}
+              title={user?.role === 'admin' && scope === 'all' ? 'Showing bookings for all owners' : 'Showing only your listings'}
+            >
+              {user?.role === 'admin' && scope === 'all' ? 'Viewing: All Owners' : 'Viewing: Your Listings'}
+            </span>
+          </div>
+          {user?.role === 'admin' && (
+            <div className='flex items-center gap-1 bg-gray-100 rounded-md p-1 text-xs font-medium border border-gray-200'>
+              <button
+                type='button'
+                onClick={() => { setScope('owner'); setPage(1); }}
+                className={`px-3 py-1 rounded-md transition-colors ${scope==='owner' ? 'bg-white shadow border border-gray-300' : 'hover:text-gray-700 text-gray-500'}`}
+              >Your Listings</button>
+              <button
+                type='button'
+                onClick={() => { setScope('all'); setPage(1); }}
+                className={`px-3 py-1 rounded-md transition-colors ${scope==='all' ? 'bg-white shadow border border-gray-300' : 'hover:text-gray-700 text-gray-500'}`}
+              >All Owners</button>
+            </div>
+          )}
+        </div>
+      </div>
       
       <div className='flex items-center gap-3 mt-6 max-w-3xl'>
         <input 

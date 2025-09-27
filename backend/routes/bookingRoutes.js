@@ -6,7 +6,8 @@ import {
   changeBookingStatus,
   getUserBookings,
   updateUserBooking,
-  deleteUserBooking,
+  cancelUserBooking,
+  deleteUserBooking, // alias to cancel for backward compatibility
   getBookingById
 } from "../controllers/bookingController.js";
 
@@ -17,6 +18,9 @@ bookingRouter.post("/create", protect, createBooking);
 bookingRouter.get("/user", protect, getUserBookings);
 bookingRouter.get("/one/:id", protect, getBookingById);
 bookingRouter.put("/user/:id", protect, updateUserBooking);
+// Prefer cancellation (non-destructive) over deletion
+bookingRouter.post("/user/:id/cancel", protect, cancelUserBooking);
+// Legacy delete route retained (acts as cancel)
 bookingRouter.delete("/user/:id", protect, deleteUserBooking);
 
 // Owner routes  

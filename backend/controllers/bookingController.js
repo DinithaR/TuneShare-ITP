@@ -6,13 +6,18 @@ import mongoose from 'mongoose';
 export const getOwnerBookings = async (req, res) => {
     try {
         const { _id, role } = req.user; // role validated by isOwner
-        const { page = 1, limit = 20, q, status, paymentStatus } = req.query;
+        const { page = 1, limit = 20, q, status, paymentStatus, scope } = req.query;
 
         const pageNum = Math.max(parseInt(page) || 1, 1);
         const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
 
-        // Base query: only this owner's bookings unless admin
-        const baseQuery = role === 'admin' ? {} : { owner: _id };
+        // Base query: only this owner's bookings unless admin AND explicitly requesting all
+        let baseQuery;
+        if (role === 'admin') {
+            if (scope === 'all') baseQuery = {}; else baseQuery = { owner: _id };
+        } else {
+            baseQuery = { owner: _id };
+        }
 
         if (status) {
             const statuses = status.split(',').map(s => s.trim().toLowerCase()).filter(s => ['pending','confirmed','cancelled'].includes(s));
@@ -42,7 +47,7 @@ export const getOwnerBookings = async (req, res) => {
                 limit: pageSize,
                 total,
                 totalPages: Math.ceil(total / pageSize),
-                scope: role === 'admin' ? 'all' : 'owner'
+                scope: role === 'admin' ? (scope === 'all' ? 'all' : 'owner') : 'owner'
             });
         }
 
@@ -76,7 +81,7 @@ export const getOwnerBookings = async (req, res) => {
             limit: pageSize,
             total,
             totalPages: Math.ceil(total / pageSize),
-            scope: role === 'admin' ? 'all' : 'owner'
+            scope: role === 'admin' ? (scope === 'all' ? 'all' : 'owner') : 'owner'
         });
     } catch (error) {
         console.log(error.message);
@@ -306,7 +311,8 @@ export const updateUserBooking = async (req, res) => {
 };
 
 // Delete a user's booking
-export const deleteUserBooking = async (req, res) => {
+// Cancel a user's booking (non-destructive: keep record, set status to 'cancelled')
+export const cancelUserBooking = async (req, res) => {
     try {
         const { _id } = req.user;
         const { id } = req.params;
@@ -318,9 +324,18 @@ export const deleteUserBooking = async (req, res) => {
             return res.json({ success: false, message: "Cannot cancel a confirmed booking." });
         }
 
-        await booking.deleteOne();
-        res.json({ success: true, message: "Booking deleted" });
+        if (booking.status === 'cancelled') {
+            return res.json({ success: true, message: "Booking already cancelled", booking });
+        }
+
+    booking.status = 'cancelled';
+    booking.cancelledAt = new Date();
+    await booking.save();
+        res.json({ success: true, message: "Booking cancelled", booking });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }
 };
+
+// Backwards compatibility: keep old export name if still referenced elsewhere
+export const deleteUserBooking = cancelUserBooking;
