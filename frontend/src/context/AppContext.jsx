@@ -19,6 +19,7 @@ export const AppProvider = ({ children }) => {
     const [role, setRole] = useState('user');
     const [isOwner, setIsOwner] = useState(false);
     const [showLogin, setShowLogin] = useState(false);
+    const [authView, setAuthView] = useState('login'); // 'login' | 'register'
     const [pickupDate, setPickupDate] = useState('');
     const [returnDate, setReturnDate] = useState('');
     const [instruments, setInstruments] = useState([]);
@@ -46,6 +47,12 @@ export const AppProvider = ({ children }) => {
         } finally {
             setAuthLoading(false);
         }
+    };
+
+    // Open login/register modal with desired view
+    const openLogin = (view = 'login') => {
+        setAuthView(view === 'register' ? 'register' : 'login');
+        setShowLogin(true);
     };
 
     // Register
@@ -185,7 +192,7 @@ export const AppProvider = ({ children }) => {
 
     const value = {
     navigate, currency, axios, user, setUser, token, setToken, role, setRole, isOwner, setIsOwner,
-    showLogin, setShowLogin, logout, fetchUser, fetchInstruments, instruments, setInstruments,
+    showLogin, setShowLogin, authView, setAuthView, openLogin, logout, fetchUser, fetchInstruments, instruments, setInstruments,
     pickupDate, setPickupDate, returnDate, setReturnDate, login, register, becomeOwner, authLoading,
     ratingsSummary, fetchRatingsSummary
     };
