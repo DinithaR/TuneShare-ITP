@@ -58,6 +58,34 @@ const ManageBookings = () => {
     }
   }
 
+  const markPickup = async (bookingId) => {
+    try {
+      const { data } = await axios.post('/api/bookings/mark-pickup', { bookingId })
+      if (data.success) {
+        toast.success('Pickup marked')
+        fetchOwnerBookings()
+      } else {
+        toast.error(data.message)
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to mark pickup')
+    }
+  }
+
+  const markReturn = async (bookingId) => {
+    try {
+      const { data } = await axios.post('/api/bookings/mark-return', { bookingId })
+      if (data.success) {
+        toast.success('Return marked')
+        fetchOwnerBookings()
+      } else {
+        toast.error(data.message)
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to mark return')
+    }
+  }
+
   // Safe date formatter
   const formatDate = (dateString) => {
     try {
@@ -179,17 +207,38 @@ const ManageBookings = () => {
                         <option value="cancelled">Cancelled</option>
                       </select>
                     ) : (
-                      <span 
-                        className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                          booking.status === 'confirmed' 
-                            ? 'bg-green-100 text-green-600' 
-                            : booking.status === 'cancelled'
-                            ? 'bg-red-100 text-red-600'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {booking.status}
-                      </span>
+                      <div className='flex flex-col gap-1'>
+                        <span 
+                          className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                            booking.status === 'confirmed' 
+                              ? 'bg-green-100 text-green-600' 
+                              : booking.status === 'cancelled'
+                              ? 'bg-red-100 text-red-600'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {booking.status}
+                        </span>
+                        {/* Operational buttons */}
+                        {booking.status === 'confirmed' && booking.paymentStatus === 'paid' && !booking.pickupConfirmedAt && (
+                          <button
+                            onClick={()=>markPickup(booking._id)}
+                            className='text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700'
+                          >Mark Picked Up</button>
+                        )}
+                        {booking.pickupConfirmedAt && !booking.returnConfirmedAt && (
+                          <button
+                            onClick={()=>markReturn(booking._id)}
+                            className='text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700'
+                          >Mark Returned</button>
+                        )}
+                        {booking.pickupConfirmedAt && (
+                          <span className='text-[10px] text-gray-500'>Picked up {new Date(booking.pickupConfirmedAt).toLocaleDateString()}</span>
+                        )}
+                        {booking.returnConfirmedAt && (
+                          <span className='text-[10px] text-gray-500'>Returned {new Date(booking.returnConfirmedAt).toLocaleDateString()}</span>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

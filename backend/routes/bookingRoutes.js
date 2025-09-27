@@ -7,7 +7,9 @@ import {
   getUserBookings,
   updateUserBooking,
   deleteUserBooking,
-  getBookingById
+  getBookingById,
+  markPickup,
+  markReturn
 } from "../controllers/bookingController.js";
 
 const bookingRouter = express.Router();
@@ -22,5 +24,7 @@ bookingRouter.delete("/user/:id", protect, deleteUserBooking);
 // Owner routes  
 bookingRouter.get("/owner", protect, isOwner, getOwnerBookings);
 bookingRouter.post("/change-status", protect, isOwner, changeBookingStatus);
+bookingRouter.post('/mark-pickup', protect, isOwner, markPickup);
+bookingRouter.post('/mark-return', protect, isOwner, markReturn);
 
 export default bookingRouter;
