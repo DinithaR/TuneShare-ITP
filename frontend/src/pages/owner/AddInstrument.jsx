@@ -14,7 +14,7 @@ const AddInstrument = () => {
   const [instrument, setInstrument] = useState({
     brand: '',
     model: '',
-    pricePerDay: 0,
+    pricePerDay: '',
     category: '',
     location: '',
     description: '',
@@ -30,7 +30,12 @@ const AddInstrument = () => {
   const formData = new FormData()
   // Append up to 5 images
   images.forEach((file) => formData.append('images', file))
-      formData.append('instrumentData', JSON.stringify(instrument))
+      const instrumentToSend = {
+        ...instrument,
+        // Ensure numeric value is sent; default to 0 if invalid (backend validates)
+        pricePerDay: Number(instrument.pricePerDay) || 0,
+      }
+      formData.append('instrumentData', JSON.stringify(instrumentToSend))
 
       const {data} = await axios.post('/api/owner/add-instrument', formData)
 
@@ -40,7 +45,7 @@ const AddInstrument = () => {
         setInstrument({
           brand: '',
           model: '',
-          pricePerDay: 0,
+          pricePerDay: '',
           category: '',
           location: '',
           description: '',
@@ -132,7 +137,20 @@ const AddInstrument = () => {
 
         <div className='flex flex-col w-full'>
           <label>Daily Price ({currency})</label>
-          <input type="number" placeholder='1000' required className='px-3 py-2 mt-1 border border-[#FBCFE8] rounded-md outline-none' value={instrument.pricePerDay} onChange={e=>setInstrument({...instrument, pricePerDay: Number(e.target.value)})}/>
+          <input
+            type="number"
+            placeholder='1000'
+            min={1}
+            step={1}
+            required
+            className='px-3 py-2 mt-1 border border-[#FBCFE8] rounded-md outline-none'
+            value={instrument.pricePerDay}
+            onChange={e => {
+              const v = e.target.value;
+              // Allow empty field without forcing 0; otherwise coerce to number
+              setInstrument({ ...instrument, pricePerDay: v === '' ? '' : Number(v) })
+            }}
+          />
         </div>
 
 
