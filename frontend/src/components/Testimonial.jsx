@@ -1,73 +1,70 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import { useAppContext } from '../context/AppContext'
 
 const Testimonial = () => {
-  return (
-        <div className="flex flex-wrap items-center justify-center gap-6 pt-10 pb-10" style={{fontFamily: "'Outfit', sans-serif"}}> 
-            <div className="text-sm w-80 border pb-6 rounded-lg overflow-hidden" 
-                 style={{borderColor: "var(--color-borderColor)", backgroundColor: "var(--color-light)", boxShadow: "0px 4px 15px 0px rgba(30,41,59,0.1)"}}>
-                <div className="flex items-center gap-4 px-5 py-4" style={{backgroundColor: "var(--color-light)"}}>
-                    <img className="h-12 w-12 rounded-full" src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=100" alt="userImage1" />
-                    <div>
-                        <h1 className="text-lg font-medium" style={{color: "var(--color-primary-dull)"}}>Donald Jackman</h1>
-                        <p style={{color: "rgba(30,41,59,0.8)"}}>Content Creator</p>
+    const { axios } = useAppContext();
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const { data } = await axios.get('/api/reviews/random?limit=6');
+                if (data.success) setItems(data.reviews || []);
+            } catch (e) {
+                // ignore
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
+
+    const StarRow = ({ rating = 5 }) => (
+        <div className="flex gap-0.5" aria-label={`Rating ${rating} out of 5`}>
+            {[1,2,3,4,5].map((i) => (
+                <svg key={i} width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10.525.464a.5.5 0 0 1 .95 0l2.107 6.482a.5.5 0 0 0 .475.346h6.817a.5.5 0 0 1 .294.904l-5.515 4.007a.5.5 0 0 0-.181.559l2.106 6.483a.5.5 0 0 1-.77.559l-5.514-4.007a.5.5 0 0 0-.588 0l-5.514 4.007a.5.5 0 0 1-.77-.56l2.106-6.482a.5.5 0 0 0-.181-.56L.832 8.197a.5.5 0 0 1 .294-.904h6.817a.5.5 0 0 0 .475-.346z" fill={i <= rating ? "var(--color-primary)" : "#E5E7EB"}/>
+                </svg>
+            ))}
+        </div>
+    );
+
+    const Card = ({ r }) => (
+        <div className="text-sm w-80 border pb-6 rounded-lg overflow-hidden" 
+            style={{borderColor: "var(--color-borderColor)", backgroundColor: "var(--color-light)", boxShadow: "0px 4px 15px 0px rgba(30,41,59,0.1)"}}>
+            <div className="flex items-center gap-4 px-5 py-4" style={{backgroundColor: "var(--color-light)"}}>
+                <img className="h-12 w-12 rounded-full object-cover" src={r.user?.image || 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=100'} alt="user" />
+                <div>
+                    <h1 className="text-lg font-medium" style={{color: "var(--color-primary-dull)"}}>{r.user?.name || 'User'}</h1>
+                    <div className="flex items-center gap-2">
+                                            {r.instrument?.image && (
+                                                <a href={`/instrument-details/${r.instrument._id}`} title="View instrument" className="block">
+                                                    <img src={r.instrument.image} alt="instrument" className="h-8 w-8 rounded object-cover" />
+                                                </a>
+                                            )}
+                      <a href={r.instrument ? `/instrument-details/${r.instrument._id}` : '#'} className="text-xs hover:underline" style={{color: "rgba(30,41,59,0.8)"}}>
+                        {r.instrument ? `${r.instrument.brand || ''} ${r.instrument.model || ''}`.trim() : 'Instrument renter'}
+                      </a>
                     </div>
                 </div>
-                <div className="p-5 pb-7">
-                    <div className="flex gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                            <svg key={i} width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M10.525.464a.5.5 0 0 1 .95 0l2.107 6.482a.5.5 0 0 0 .475.346h6.817a.5.5 0 0 1 .294.904l-5.515 4.007a.5.5 0 0 0-.181.559l2.106 6.483a.5.5 0 0 1-.77.559l-5.514-4.007a.5.5 0 0 0-.588 0l-5.514 4.007a.5.5 0 0 1-.77-.56l2.106-6.482a.5.5 0 0 0-.181-.56L.832 8.197a.5.5 0 0 1 .294-.904h6.817a.5.5 0 0 0 .475-.346z" fill="var(--color-primary)"/>
-                            </svg>
-                        ))}
-                    </div>
-                    <p style={{color: "rgba(30,41,59,0.5)", marginTop: "1.25rem"}}>I've been using imagify for nearly two years, primarily for Instagram, and it has been incredibly user-friendly, making my work much easier.</p>
-                </div>
-                <a href="#" style={{color: "var(--color-primary)", textDecoration: "underline", paddingLeft: "1.25rem", paddingRight: "1.25rem"}}>Read more</a>
             </div>
-        
-            <div className="text-sm w-80 border pb-6 rounded-lg overflow-hidden" 
-                 style={{borderColor: "var(--color-borderColor)", backgroundColor: "var(--color-light)", boxShadow: "0px 4px 15px 0px rgba(30,41,59,0.1)"}}>
-                <div className="flex items-center gap-4 px-5 py-4" style={{backgroundColor: "var(--color-light)"}}>
-                    <img className="h-12 w-12 rounded-full" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100" alt="userImage2" />
-                    <div>
-                        <h1 className="text-lg font-medium" style={{color: "var(--color-primary-dull)"}}>Richard Nelson</h1>
-                        <p style={{color: "rgba(30,41,59,0.8)"}}>Instagram Influencer</p>
-                    </div>
-                </div>
-                <div className="p-5 pb-7">
-                    <div className="flex gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                            <svg key={i} width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M10.525.464a.5.5 0 0 1 .95 0l2.107 6.482a.5.5 0 0 0 .475.346h6.817a.5.5 0 0 1 .294.904l-5.515 4.007a.5.5 0 0 0-.181.559l2.106 6.483a.5.5 0 0 1-.77.559l-5.514-4.007a.5.5 0 0 0-.588 0l-5.514 4.007a.5.5 0 0 1-.77-.56l2.106-6.482a.5.5 0 0 0-.181-.56L.832 8.197a.5.5 0 0 1 .294-.904h6.817a.5.5 0 0 0 .475-.346z" fill="var(--color-primary)"/>
-                            </svg>
-                        ))}
-                    </div>
-                    <p style={{color: "rgba(30,41,59,0.5)", marginTop: "1.25rem"}}>I've been using imagify for nearly two years, primarily for Instagram, and it has been incredibly user-friendly, making my work much easier.</p>
-                </div>
-                <a href="#" style={{color: "var(--color-primary)", textDecoration: "underline", paddingLeft: "1.25rem", paddingRight: "1.25rem"}}>Read more</a>
+            <div className="p-5 pb-7">
+                <StarRow rating={Math.round(r.rating || 5)} />
+                <p style={{color: "rgba(30,41,59,0.5)", marginTop: "1.25rem"}}>{r.comment || 'No comment provided.'}</p>
             </div>
-        
-            <div className="text-sm w-80 border pb-6 rounded-lg overflow-hidden" 
-                 style={{borderColor: "var(--color-borderColor)", backgroundColor: "var(--color-light)", boxShadow: "0px 4px 15px 0px rgba(30,41,59,0.1)"}}>
-                <div className="flex items-center gap-4 px-5 py-4" style={{backgroundColor: "var(--color-light)"}}>
-                    <img className="h-12 w-12 rounded-full" src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=100&h=100&auto=format&fit=crop" alt="userImage3" />
-                    <div>
-                        <h1 className="text-lg font-medium" style={{color: "var(--color-primary-dull)"}}>James Washington</h1>
-                        <p style={{color: "rgba(30,41,59,0.8)"}}>Digital Content Creator</p>
-                    </div>
-                </div>
-                <div className="p-5 pb-7">
-                    <div className="flex gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                            <svg key={i} width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M10.525.464a.5.5 0 0 1 .95 0l2.107 6.482a.5.5 0 0 0 .475.346h6.817a.5.5 0 0 1 .294.904l-5.515 4.007a.5.5 0 0 0-.181.559l2.106 6.483a.5.5 0 0 1-.77.559l-5.514-4.007a.5.5 0 0 0-.588 0l-5.514 4.007a.5.5 0 0 1-.77-.56l2.106-6.482a.5.5 0 0 0-.181-.56L.832 8.197a.5.5 0 0 1 .294-.904h6.817a.5.5 0 0 0 .475-.346z" fill="var(--color-primary)"/>
-                            </svg>
-                        ))}
-                    </div>
-                    <p style={{color: "rgba(30,41,59,0.5)", marginTop: "1.25rem"}}>I've been using imagify for nearly two years, primarily for Instagram, and it has been incredibly user-friendly, making my work much easier.</p>
-                </div>
-                <a href="#" style={{color: "var(--color-primary)", textDecoration: "underline", paddingLeft: "1.25rem", paddingRight: "1.25rem"}}>Read more</a>
-            </div>
+        </div>
+    );
+
+    return (
+        <div className="flex flex-wrap items-center justify-center gap-6 pt-10 pb-10" style={{fontFamily: "'Outfit', sans-serif"}}>
+            {loading && <p className="text-sm text-slate-500">Loading testimonials…</p>}
+            {!loading && items.length === 0 && (
+                <p className="text-sm text-slate-500">No reviews yet. Check back soon!</p>
+            )}
+            {items.map((r) => (
+                <Card key={r._id} r={r} />
+            ))}
         </div>
     );
 };

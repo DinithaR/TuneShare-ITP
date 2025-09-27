@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 const InstrumentCard = ({ instrument }) => {
     const currency = import.meta.env.VITE_CURRENCY
-    const { user } = useAppContext()
+    const { user, ratingsSummary } = useAppContext()
     const navigate = useNavigate()
 
     return (
@@ -20,12 +20,19 @@ const InstrumentCard = ({ instrument }) => {
                 {user && instrument.owner === user._id && (
                   <p className='absolute top-4 right-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-md backdrop-blur-sm'>Your Listing</p>
                 )}
-                <div className='absolute bottom-4 right-4 flex flex-col items-end gap-2'>
-                    {instrument.avgRating ? (
-                        <div className='bg-black/75 text-yellow-300 text-xs px-2 py-1 rounded-md'>
-                            ⭐ {instrument.avgRating.toFixed(1)} <span className='text-white/70'>({instrument.reviewCount || 0})</span>
-                        </div>
-                    ) : null}
+                                <div className='absolute bottom-4 right-4 flex flex-col items-end gap-2'>
+                                        {(() => {
+                                                const s = ratingsSummary?.[instrument?._id];
+                                                const avgSource = (typeof s?.avgRating === 'number') ? s.avgRating : instrument?.avgRating;
+                                                const countSource = (typeof s?.count === 'number') ? s.count : instrument?.reviewCount;
+                                                const avg = Number.isFinite(avgSource) ? avgSource : 0;
+                                                const count = Number.isFinite(countSource) ? Number(countSource) : 0;
+                                                return (
+                                                    <div className='bg-black/75 text-yellow-300 text-xs px-2 py-1 rounded-md' aria-label={`Average rating ${avg.toFixed(1)} from ${count} reviews`}>
+                                                        ⭐ {avg.toFixed(1)} <span className='text-white/70'>({count})</span>
+                                                    </div>
+                                                );
+                                        })()}
                     <div className='bg-black/80 backdrop-blur-sm text-white px-3 py-2 rounded-lg'>
                         <span className='font-semibold'>{currency}{instrument.pricePerDay}</span>
                         <span className='text-sm text-white/80'> / day</span>

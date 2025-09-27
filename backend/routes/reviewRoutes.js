@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, isAdmin } from '../middleware/auth.js';
-import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary, adminListReviews } from '../controllers/reviewController.js';
+import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary, adminListReviews, getRandomReviews } from '../controllers/reviewController.js';
 
 const reviewRouter = express.Router();
 
@@ -9,6 +9,9 @@ reviewRouter.get('/instrument/:instrumentId', getInstrumentReviews);
 
 // Public: ratings summary for all instruments
 reviewRouter.get('/summary', getRatingsSummary);
+
+// Public: random reviews
+reviewRouter.get('/random', getRandomReviews);
 
 // Auth-required: get my review for an instrument
 reviewRouter.get('/instrument/:instrumentId/me', protect, getMyReview);

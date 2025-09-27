@@ -9,7 +9,8 @@ import {
   deleteUserBooking,
   getBookingById,
   markPickup,
-  markReturn
+  markReturn,
+  checkAvailability
 } from "../controllers/bookingController.js";
 
 const bookingRouter = express.Router();
@@ -26,5 +27,8 @@ bookingRouter.get("/owner", protect, isOwner, getOwnerBookings);
 bookingRouter.post("/change-status", protect, isOwner, changeBookingStatus);
 bookingRouter.post('/mark-pickup', protect, isOwner, markPickup);
 bookingRouter.post('/mark-return', protect, isOwner, markReturn);
+
+// Public route: check availability
+bookingRouter.post('/check-availability', checkAvailability);
 
 export default bookingRouter;

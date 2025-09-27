@@ -2,7 +2,7 @@
 
 
 import express from "express";
-import { getInstruments, getUserData, loginUser, registerUser, becomeOwner, getAllUsers, changeUserRole, deleteUser, editUser, adminGetAllInstruments, adminDeleteInstrument, adminEditInstrument } from "../controllers/UserController.js";
+import { getInstruments, getUserData, loginUser, registerUser, becomeOwner, getAllUsers, changeUserRole, deleteUser, editUser, adminGetAllInstruments, adminDeleteInstrument, adminEditInstrument, getInstrumentById } from "../controllers/UserController.js";
 import { protect, isAdmin } from "../middleware/auth.js";
 
 const userRouter = express.Router();
@@ -16,6 +16,7 @@ userRouter.post('/register', registerUser);
 userRouter.post('/login', loginUser);
 userRouter.get('/data', protect, getUserData);
 userRouter.get('/instruments', getInstruments);
+userRouter.get('/instruments/:id', getInstrumentById);
 userRouter.post('/become-owner', protect, becomeOwner);
 
 // Admin user management

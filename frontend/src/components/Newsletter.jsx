@@ -1,4 +1,5 @@
 import React from 'react';
+import toast from 'react-hot-toast';
 
 const Newsletter = () => {
   return (
@@ -33,10 +34,13 @@ const Newsletter = () => {
           <h1 className="text-3xl font-bold" style={{color: "var(--color-primary-dull)"}}>
             Subscribe to our newsletter
           </h1>
-          <p className="mt-4" style={{color: "rgba(30,41,59,0.6)"}}>
+          <p className="mt-2 text-sm inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 border border-yellow-200 text-yellow-700">
+            Coming soon
+          </p>
+          <p className="mt-3" style={{color: "rgba(30,41,59,0.6)"}}>
             Be the first to get the latest news about promotions, and much more!
           </p>
-          <form className="mt-8 flex">
+          <form className="mt-6 flex" onSubmit={(e)=>{ e.preventDefault(); toast?.success?.('Newsletter feature coming soon!')}}>
             <input
               type="email"
               placeholder="Your email address"
@@ -46,11 +50,13 @@ const Newsletter = () => {
                 backgroundColor: "white",
                 color: "var(--color-primary-dull)"
               }}
+              disabled
             />
             <button
               type="submit"
               className="rounded-r-md px-7 py-2 text-white"
               style={{backgroundColor: "var(--color-primary)"}}
+              disabled
             >
               Submit
             </button>

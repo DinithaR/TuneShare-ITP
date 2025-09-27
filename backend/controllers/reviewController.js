@@ -133,3 +133,36 @@ export const adminListReviews = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Public: get random reviews to show as testimonials
+export const getRandomReviews = async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 6, 1), 20);
+    const pipeline = [
+      { $sample: { size: limit } },
+      { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'user' } },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'instruments', localField: 'instrument', foreignField: '_id', as: 'instrument' } },
+      { $unwind: { path: '$instrument', preserveNullAndEmptyArrays: true } },
+      { $project: {
+          _id: 1,
+          rating: 1,
+          comment: 1,
+          createdAt: 1,
+          'user._id': 1,
+          'user.name': 1,
+          'user.image': 1,
+          'instrument._id': 1,
+          'instrument.brand': 1,
+          'instrument.model': 1,
+          'instrument.image': 1,
+          'instrument.category': 1,
+        }
+      }
+    ];
+    const items = await Review.aggregate(pipeline);
+    res.json({ success: true, reviews: items });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
