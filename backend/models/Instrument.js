@@ -13,7 +13,9 @@ const instrumentSchema = new mongoose.Schema({
     pricePerDay: {type: Number, required: true},
     location: {type: String, required: true},
     description: {type: String, required: true},
-    isAvailable: {type: Boolean, default: true}
+    isAvailable: {type: Boolean, default: true},
+    // Soft delete flag. Do NOT physically remove instruments to preserve historical bookings & reviews.
+    isDeleted: {type: Boolean, default: false}
 },{timestamps: true})
 
 const Instrument = mongoose.model('Instrument', instrumentSchema)
