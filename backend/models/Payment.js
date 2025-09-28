@@ -17,6 +17,13 @@ const paymentSchema = new Schema({
   method: { type: String, default: 'card' },
   paidAt: { type: Date },
   rawSession: { type: Object },
+  billingInfo: {
+    fullName: { type: String },
+    nic: { type: String },
+    address: { type: String },
+    phone: { type: String },
+    termsAcceptedAt: { type: Date },
+  },
 }, { timestamps: true });
 
 // Allow at most one payment per type per booking per user (one 'rental' and one 'late_fee')
