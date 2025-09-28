@@ -106,7 +106,10 @@ const Instruments = () => {
   return (
     <div>
       <div className='flex flex-col items-center py-20 bg-light max-md:px-4'>
-        <Title title='Available Instruments' subtitle='Browse our selection of premium instruments available for your events' />
+        <Title
+          title={isSearchData ? 'Available Instruments' : 'Instruments'}
+          subtitle={isSearchData ? 'Browse our selection of premium instruments available for your dates' : 'Browse our selection of premium instruments'}
+        />
 
 
         <div className='flex items-center bg-white px-4 mt-6 max-w-140 w-full h-12 rounded-full shadow border border-borderColor'>
