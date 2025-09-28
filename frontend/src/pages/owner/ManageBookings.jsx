@@ -12,6 +12,7 @@ const ManageBookings = () => {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [scope, setScope] = useState('mine') // 'mine' or 'all' (admin only)
+  const [downloading, setDownloading] = useState(false)
 
   const fetchOwnerBookings = async () => {
     try {
@@ -142,6 +143,42 @@ const ManageBookings = () => {
             >All Owners</button>
           </div>
         )}
+        <div className='flex items-center gap-2'>
+          <button
+            onClick={async ()=>{
+              try {
+                setDownloading(true)
+                const params = new URLSearchParams()
+                if (user?.role === 'admin') {
+                  params.append('scope', scope === 'all' ? 'all' : 'mine')
+                  if (scope === 'mine') params.append('ownerId', user?._id)
+                }
+                const res = await axios.get(`/api/bookings/owner/report${params.toString()?`?${params.toString()}`:''}`, { responseType: 'blob' })
+                if (res.status === 200) {
+                  const blob = new Blob([res.data], { type: 'application/pdf' })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  const stamp = new Date().toISOString().split('T')[0]
+                  a.download = `booking_report_${stamp}.pdf`
+                  document.body.appendChild(a)
+                  a.click()
+                  a.remove()
+                  window.URL.revokeObjectURL(url)
+                  toast.success('Report downloaded')
+                } else {
+                  toast.error('Failed to download report')
+                }
+              } catch (e) {
+                toast.error('Report download failed')
+              } finally {
+                setDownloading(false)
+              }
+            }}
+            className='px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium disabled:opacity-50'
+            disabled={downloading}
+          >{downloading? 'Generating…':'Download Report'}</button>{/* Generates PDF of current + previous bookings */}
+        </div>
       </div>
       
       <div className='flex items-center gap-3 mt-6 max-w-3xl'>

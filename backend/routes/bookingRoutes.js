@@ -10,6 +10,7 @@ import {
   getBookingById,
   markPickup,
   markReturn,
+  generateOwnerBookingsReport,
   checkAvailability
 } from "../controllers/bookingController.js";
 
@@ -27,6 +28,7 @@ bookingRouter.get("/owner", protect, isOwner, getOwnerBookings);
 bookingRouter.post("/change-status", protect, isOwner, changeBookingStatus);
 bookingRouter.post('/mark-pickup', protect, isOwner, markPickup);
 bookingRouter.post('/mark-return', protect, isOwner, markReturn);
+bookingRouter.get('/owner/report', protect, isOwner, generateOwnerBookingsReport);
 
 // Public route: check availability
 bookingRouter.post('/check-availability', checkAvailability);
