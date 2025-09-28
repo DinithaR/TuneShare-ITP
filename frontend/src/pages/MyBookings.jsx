@@ -4,6 +4,7 @@ import Title from '../components/Title'
 import { useAppContext } from '../context/AppContext'
 import toast from 'react-hot-toast'
 import { useNavigate, Link } from 'react-router-dom'
+import BillingInfoModal from '../components/BillingInfoModal'
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([])
@@ -23,6 +24,8 @@ const MyBookings = () => {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [receiptLoading, setReceiptLoading] = useState(false)
   const [paymentForReceipt, setPaymentForReceipt] = useState(null)
+  const [billingOpen, setBillingOpen] = useState(false)
+  const [pendingPayment, setPendingPayment] = useState(null) // { bookingId, type: 'rental'|'late_fee' }
   const navigate = useNavigate();
   const currency = import.meta.env.VITE_CURRENCY
   const { axios } = useAppContext()
@@ -129,31 +132,32 @@ const MyBookings = () => {
     setEditData({ pickupDate: '', returnDate: '' });
   };
 
-  const handlePayNow = async (bookingId) => {
+  const handlePayNow = (bookingId) => {
+    setPendingPayment({ bookingId, type: 'rental' })
+    setBillingOpen(true)
+  }
+
+  const handlePayLateFee = (e, bookingId) => {
+    e?.stopPropagation?.()
+    setPendingPayment({ bookingId, type: 'late_fee' })
+    setBillingOpen(true)
+  }
+
+  const submitBillingAndPay = async (billingInfo) => {
+    if (!pendingPayment) return;
     try {
-      const { data } = await axios.post('/api/payments/create-checkout-session', { bookingId });
+      const endpoint = pendingPayment.type === 'late_fee' ? '/api/payments/create-late-fee-session' : '/api/payments/create-checkout-session';
+      const { data } = await axios.post(endpoint, { bookingId: pendingPayment.bookingId, billingInfo });
       if (data.success && data.url) {
         window.location.href = data.url;
       } else {
         toast.error(data.message || 'Could not start payment');
       }
     } catch (error) {
-      toast.error('Could not start payment');
-    }
-  }
-
-  const handlePayLateFee = async (e, bookingId) => {
-    e?.stopPropagation?.()
-    try {
-      const { data } = await axios.post('/api/payments/create-late-fee-session', { bookingId })
-      if (data.success && data.url) {
-        window.location.href = data.url
-      } else {
-        toast.error(data.message || 'Could not start late fee payment')
-      }
-    } catch (err) {
-      const msg = err?.response?.data?.message || err.message || 'Could not start late fee payment'
-      toast.error(msg)
+      toast.error(error?.response?.data?.message || 'Could not start payment');
+    } finally {
+      setBillingOpen(false);
+      setPendingPayment(null);
     }
   }
 
@@ -489,6 +493,7 @@ const MyBookings = () => {
         </div>
       )}
       <ReceiptModal open={receiptModalOpen} onClose={closeReceipt} loading={receiptLoading} payment={paymentForReceipt} currency={currency} axios={axios} />
+      <BillingInfoModal open={billingOpen} onClose={() => { setBillingOpen(false); setPendingPayment(null); }} onSubmit={submitBillingAndPay} />
     </div>
   )
 }

@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // POST /api/payments/create-checkout-session
 export const createCheckoutSession = async (req, res) => {
   try {
-    const { bookingId } = req.body;
+    const { bookingId, billingInfo } = req.body;
     console.log('createCheckoutSession called with bookingId:', bookingId);
     if (!process.env.STRIPE_SECRET_KEY) {
       console.error('Stripe secret key missing in environment.');
@@ -41,7 +41,7 @@ export const createCheckoutSession = async (req, res) => {
     // Create Stripe Checkout session
     let session;
     try {
-      session = await stripe.checkout.sessions.create({
+  session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -60,6 +60,10 @@ export const createCheckoutSession = async (req, res) => {
       mode: 'payment',
       metadata: {
         bookingId: booking._id.toString(),
+        paymentType: 'rental',
+        fullName: billingInfo?.fullName || '',
+        nic: billingInfo?.nic || '',
+        phone: billingInfo?.phone || '',
       },
       success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?success=true&bookingId=${booking._id}`,
       cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?canceled=true&bookingId=${booking._id}`,
@@ -91,6 +95,13 @@ export const createCheckoutSession = async (req, res) => {
           stripePaymentIntentId: session.payment_intent || null,
           status: 'pending',
           rawSession: session,
+          billingInfo: billingInfo ? {
+            fullName: billingInfo.fullName,
+            nic: billingInfo.nic,
+            address: billingInfo.address,
+            phone: billingInfo.phone,
+            termsAcceptedAt: billingInfo.termsAcceptedAt ? new Date(billingInfo.termsAcceptedAt) : new Date(),
+          } : undefined,
         },
         { upsert: true, new: true }
       );
@@ -256,7 +267,7 @@ export const stripeWebhook = async (req, res) => {
 // POST /api/payments/create-late-fee-session
 export const createLateFeeCheckoutSession = async (req, res) => {
   try {
-    const { bookingId } = req.body;
+    const { bookingId, billingInfo } = req.body;
     if (!bookingId) return res.status(400).json({ success: false, message: 'bookingId required' });
     const booking = await Booking.findById(bookingId).populate('instrument');
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -273,7 +284,7 @@ export const createLateFeeCheckoutSession = async (req, res) => {
     const amount = booking.lateFee; // display currency amount
     let session;
     try {
-      session = await stripe.checkout.sessions.create({
+  session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -292,6 +303,9 @@ export const createLateFeeCheckoutSession = async (req, res) => {
       metadata: {
         bookingId: booking._id.toString(),
         paymentType: 'late_fee',
+        fullName: billingInfo?.fullName || '',
+        nic: billingInfo?.nic || '',
+        phone: billingInfo?.phone || '',
       },
       success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?success=true&bookingId=${booking._id}&lateFee=true`,
       cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?canceled=true&bookingId=${booking._id}&lateFee=true`,
@@ -318,6 +332,13 @@ export const createLateFeeCheckoutSession = async (req, res) => {
         stripePaymentIntentId: session.payment_intent || null,
         status: 'pending',
         rawSession: session,
+        billingInfo: billingInfo ? {
+          fullName: billingInfo.fullName,
+          nic: billingInfo.nic,
+          address: billingInfo.address,
+          phone: billingInfo.phone,
+          termsAcceptedAt: billingInfo.termsAcceptedAt ? new Date(billingInfo.termsAcceptedAt) : new Date(),
+        } : undefined,
       },
       { upsert: true, new: true }
     );
