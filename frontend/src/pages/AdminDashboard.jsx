@@ -80,6 +80,9 @@ const AdminDashboard = () => {
   const [reviewsPage, setReviewsPage] = useState(1);
   const [reviewsPages, setReviewsPages] = useState(1);
   const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+  const [summary, setSummary] = useState({ overall: { count: 0, avgRating: 0, minRating: 0, maxRating: 0 }, topInstruments: [] });
   // Add missing state for instruments section
   const [instruments, setInstruments] = useState([]);
   const [loadingInstruments, setLoadingInstruments] = useState(true);
@@ -178,13 +181,17 @@ const AdminDashboard = () => {
     fetchUsers();
     fetchInstruments();
     fetchReviews(1);
+    fetchSummary();
     // eslint-disable-next-line
   }, []);
 
   const fetchReviews = async (page = 1) => {
     try {
       setLoadingReviews(true);
-      const { data } = await axios.get(`/api/reviews/admin/list?page=${page}&limit=20`);
+      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      if (filterFrom) params.set('from', filterFrom);
+      if (filterTo) params.set('to', filterTo);
+      const { data } = await axios.get(`/api/reviews/admin/list?${params.toString()}`);
       if (data.success) {
         setReviews(data.reviews);
         setReviewsPage(data.page);
@@ -197,6 +204,53 @@ const AdminDashboard = () => {
       toast.error('Failed to fetch reviews');
     } finally {
       setLoadingReviews(false);
+    }
+  };
+
+  const fetchSummary = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterFrom) params.set('from', filterFrom);
+      if (filterTo) params.set('to', filterTo);
+      const { data } = await axios.get(`/api/reviews/admin/summary?${params.toString()}`);
+      if (data.success) setSummary(data);
+    } catch (error) {
+      // non-fatal
+    }
+  };
+
+  const handleApplyFilters = () => {
+    fetchReviews(1);
+    fetchSummary();
+  };
+
+  const handleClearFilters = () => {
+    setFilterFrom('');
+    setFilterTo('');
+    setTimeout(() => {
+      fetchReviews(1);
+      fetchSummary();
+    }, 0);
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterFrom) params.set('from', filterFrom);
+      if (filterTo) params.set('to', filterTo);
+      const url = `/api/reviews/admin/export?${params.toString()}`;
+      const res = await axios.get(url, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `reviews_report_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch (error) {
+      toast.error('Export failed');
     }
   };
 
@@ -439,6 +493,73 @@ const AdminDashboard = () => {
           <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2">
             <span className="inline-block w-2 h-2 bg-yellow-400 rounded-full"></span> Ratings & Reviews
           </h2>
+          {/* Filters and actions */}
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">From</label>
+                <input type="date" value={filterFrom} onChange={(e)=> setFilterFrom(e.target.value)} className="border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">To</label>
+                <input type="date" value={filterTo} onChange={(e)=> setFilterTo(e.target.value)} className="border rounded px-2 py-1" />
+              </div>
+              <button onClick={handleApplyFilters} className="px-3 py-2 bg-primary text-white rounded">Apply</button>
+              <button onClick={handleClearFilters} className="px-3 py-2 border rounded">Clear</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleExportCsv} className="px-3 py-2 bg-green-600 text-white rounded">Export PDF</button>
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="p-3 border rounded bg-gray-50">
+              <div className="text-xs text-gray-500">Total Reviews</div>
+              <div className="text-xl font-semibold">{summary.overall?.count ?? 0}</div>
+            </div>
+            <div className="p-3 border rounded bg-gray-50">
+              <div className="text-xs text-gray-500">Average Rating</div>
+              <div className="text-xl font-semibold">{(summary.overall?.avgRating ?? 0).toFixed(2)}</div>
+            </div>
+            <div className="p-3 border rounded bg-gray-50">
+              <div className="text-xs text-gray-500">Min Rating</div>
+              <div className="text-xl font-semibold">{summary.overall?.minRating ?? 0}</div>
+            </div>
+            <div className="p-3 border rounded bg-gray-50">
+              <div className="text-xs text-gray-500">Max Rating</div>
+              <div className="text-xl font-semibold">{summary.overall?.maxRating ?? 0}</div>
+            </div>
+          </div>
+
+          {/* Top instruments */}
+          {summary.topInstruments && summary.topInstruments.length > 0 && (
+            <div className="mb-4">
+              <div className="text-sm font-semibold mb-2">Top Instruments (by review count)</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-600">
+                      <th className="text-left py-1 px-2">Instrument</th>
+                      <th className="text-left py-1 px-2">Category</th>
+                      <th className="text-left py-1 px-2">Reviews</th>
+                      <th className="text-left py-1 px-2">Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.topInstruments.map((ti) => (
+                      <tr key={ti.instrumentId} className="border-t">
+                        <td className="py-1 px-2">{ti.brand} {ti.model}</td>
+                        <td className="py-1 px-2">{ti.category}</td>
+                        <td className="py-1 px-2">{ti.count}</td>
+                        <td className="py-1 px-2">{ti.avgRating?.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           {loadingReviews ? (
             <p className="text-gray-500">Loading reviews...</p>
           ) : (
