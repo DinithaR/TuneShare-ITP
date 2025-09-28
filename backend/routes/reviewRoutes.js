@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, isAdmin } from '../middleware/auth.js';
-import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary, adminListReviews, getRandomReviews } from '../controllers/reviewController.js';
+import { upsertReview, getInstrumentReviews, getMyReview, deleteReview, getRatingsSummary, adminListReviews, adminSummaryReviews, getRandomReviews, adminExportReviewsPdf } from '../controllers/reviewController.js';
 
 const reviewRouter = express.Router();
 
@@ -24,5 +24,7 @@ reviewRouter.delete('/:id', protect, deleteReview);
 
 // Admin
 reviewRouter.get('/admin/list', protect, isAdmin, adminListReviews);
+reviewRouter.get('/admin/export', protect, isAdmin, adminExportReviewsPdf);
+reviewRouter.get('/admin/summary', protect, isAdmin, adminSummaryReviews);
 
 export default reviewRouter;
