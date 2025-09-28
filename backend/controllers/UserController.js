@@ -84,11 +84,10 @@ export const editUser = async (req, res) => {
 // Get all instruments
 export const getInstruments = async (req, res) => {
     try {
-        // Only return active, non-deleted, available instruments with a valid owner
+        // Return active, non-deleted instruments with a valid owner (include unavailable too)
         const instruments = await Instrument.find({
             isDeleted: { $ne: true },
-            owner: { $ne: null },
-            isAvailable: true
+            owner: { $ne: null }
         });
         res.json({ success: true, instruments });
     } catch (error) {
