@@ -84,7 +84,12 @@ export const editUser = async (req, res) => {
 // Get all instruments
 export const getInstruments = async (req, res) => {
     try {
-        const instruments = await Instrument.find();
+        // Only return active, non-deleted, available instruments with a valid owner
+        const instruments = await Instrument.find({
+            isDeleted: { $ne: true },
+            owner: { $ne: null },
+            isAvailable: true
+        });
         res.json({ success: true, instruments });
     } catch (error) {
         res.json({ success: false, message: error.message });
@@ -96,7 +101,9 @@ export const getInstrumentById = async (req, res) => {
     try {
         const { id } = req.params;
         const instrument = await Instrument.findById(id).populate('owner', 'name email');
-        if (!instrument) return res.json({ success: false, message: 'Instrument not found' });
+        if (!instrument || instrument.isDeleted || !instrument.owner) {
+            return res.json({ success: false, message: 'Instrument not found' });
+        }
         res.json({ success: true, instrument });
     } catch (error) {
         res.json({ success: false, message: error.message });

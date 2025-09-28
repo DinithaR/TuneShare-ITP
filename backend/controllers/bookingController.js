@@ -473,7 +473,7 @@ export const checkAvailability = async (req, res) => {
         }
 
         // Find instruments in the location, currently marked available
-        const baseInstrumentQuery = { location, isAvailable: true };
+    const baseInstrumentQuery = { location, isAvailable: true, isDeleted: { $ne: true } };
 
         // Find bookings that overlap the requested range (excluding cancelled)
         const overlapping = await Booking.find({

@@ -150,7 +150,7 @@ export const updateInstrument = async (req, res) => {
 export const getOwnerInstruments = async (req, res) => {
     try {
         const {_id} = req.user;
-        const instruments = await Instrument.find({owner: _id})
+        const instruments = await Instrument.find({owner: _id, isDeleted: { $ne: true }})
         res.json({success: true, instruments})
     } catch (error) {
         console.log(error.message);
@@ -192,12 +192,12 @@ export const deleteInstrument = async (req, res) => {
             return res.json({success: false, message: "Unauthorized"})
         }
 
-        instrument.owner = null;
+        // Soft delete instead of removing document to preserve booking history
         instrument.isAvailable = false;
+        instrument.isDeleted = true;
+        await instrument.save();
 
-        await instrument.save()
-
-        res.json({success: true, message: "Instrument Removed", instrument})
+        res.json({success: true, message: "Instrument removed", instrument})
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message})
@@ -214,7 +214,7 @@ export const getDashboardData = async (req, res) => {
             return res.json({success: false, message: "Unauthorized"})
         }
 
-        const instruments = await Instrument.find({owner: _id})
+    const instruments = await Instrument.find({owner: _id, isDeleted: { $ne: true }})
         const bookings = await Booking.find({owner: _id}).populate('instrument').sort({createdAt: -1});
 
         const pendingBookings = await Booking.find({owner: _id, status: "pending"})
