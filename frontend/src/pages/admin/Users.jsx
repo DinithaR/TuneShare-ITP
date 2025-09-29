@@ -6,13 +6,16 @@ const AdminUsers = () => {
   const { axios } = useAppContext();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [editUserId, setEditUserId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', role: '' });
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get('/api/user/all');
+      const params = new URLSearchParams();
+      if (search && search.trim()) params.set('search', search.trim());
+      const { data } = await axios.get(`/api/user/all?${params.toString()}`);
       if (data.success) setUsers(data.users); else toast.error(data.message);
     } catch (e) { toast.error('Failed to fetch users'); } finally { setLoading(false); }
   };
@@ -47,6 +50,38 @@ const AdminUsers = () => {
   return (
     <div className="bg-white rounded-2xl shadow p-6 border border-gray-100">
       <h2 className="text-xl font-bold mb-4 text-gray-800">Users</h2>
+      <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(e)=>setSearch(e.target.value)}
+          onKeyDown={(e)=>{ if(e.key==='Enter') fetchUsers(); }}
+          placeholder="Search by name or email..."
+          className="border border-gray-300 rounded px-3 py-2 w-full md:w-72"
+        />
+        <div className="flex gap-2">
+          <button onClick={fetchUsers} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">Search</button>
+          <button onClick={()=>{ setSearch(''); setTimeout(()=>fetchUsers(),0); }} className="px-3 py-2 bg-gray-200 text-gray-800 rounded text-sm">Clear</button>
+          <button onClick={async()=>{
+            try {
+              const params = new URLSearchParams();
+              if (search && search.trim()) params.set('search', search.trim());
+              const res = await axios.get(`/api/user/export/users.pdf?${params.toString()}`, { responseType: 'blob' });
+              const blob = new Blob([res.data], { type: 'application/pdf' });
+              const href = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = href;
+              a.download = `users_report_${Date.now()}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(href);
+            } catch {
+              toast.error('Export failed');
+            }
+          }} className="px-3 py-2 bg-pink-500 text-white rounded text-sm">Export PDF</button>
+        </div>
+      </div>
       {loading ? <p className="text-gray-500">Loading...</p> : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border-separate border-spacing-y-2">
