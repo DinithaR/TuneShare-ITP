@@ -74,6 +74,7 @@ const AdminDashboard = () => {
   const { axios, token } = useAppContext();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userSearch, setUserSearch] = useState('');
   // Reviews state
   const [reviews, setReviews] = useState([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -94,7 +95,9 @@ const AdminDashboard = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get('/api/user/all');
+      const params = new URLSearchParams();
+      if (userSearch && userSearch.trim()) params.set('search', userSearch.trim());
+      const { data } = await axios.get(`/api/user/all?${params.toString()}`);
       if (data.success) {
         setUsers(data.users);
       } else {
@@ -104,6 +107,25 @@ const AdminDashboard = () => {
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportUsersPdf = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (userSearch && userSearch.trim()) params.set('search', userSearch.trim());
+      const res = await axios.get(`/api/user/export/users.pdf?${params.toString()}` , { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `users_report_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch (error) {
+      toast.error('Failed to export users');
     }
   };
 
@@ -278,6 +300,21 @@ const AdminDashboard = () => {
           <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2">
             <span className="inline-block w-2 h-2 bg-pink-400 rounded-full"></span> Users
           </h2>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-4">
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              onKeyDown={(e)=>{ if(e.key==='Enter') fetchUsers(); }}
+              placeholder="Search by name or email..."
+              className="border border-gray-300 rounded px-3 py-2 w-full md:w-72"
+            />
+            <div className="flex gap-2">
+              <button onClick={fetchUsers} className="px-3 py-2 bg-blue-600 text-white rounded text-sm">Search</button>
+              <button onClick={()=>{ setUserSearch(''); setTimeout(()=>fetchUsers(),0); }} className="px-3 py-2 bg-gray-200 text-gray-800 rounded text-sm">Clear</button>
+              <button onClick={handleExportUsersPdf} className="px-3 py-2 bg-pink-500 text-white rounded text-sm">Export PDF</button>
+            </div>
+          </div>
           {loading ? (
             <p className="text-gray-500">Loading users...</p>
           ) : (
