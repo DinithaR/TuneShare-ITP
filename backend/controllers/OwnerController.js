@@ -4,6 +4,7 @@ import Instrument from "../models/Instrument.js";
 import User from "../models/User.js";
 import fs from "fs";
 import PDFDocument from 'pdfkit';
+import { drawReportHeader } from '../utils/pdfHeader.js';
 
 // API to change Role as User
 export const changeRoleToOwner = async (req, res)=>{
@@ -336,18 +337,10 @@ export const generateOwnerReport = async (req, res) => {
         const grayText = '#374151';
         const mutedText = '#6b7280';
 
-        // Header with title and period box
+        // Header with standardized component + period line
         const header = () => {
-            // Start a bit higher manually if first page
-            if (doc.page.number === 1) {
-                doc.y = 24; // manual vertical position
-            }
-            doc.fillColor(primaryColor).fontSize(22).text('Owner Revenue & Bookings Report', { align: 'left' });
-            const titleBottomY = doc.y; // capture after title
-            // Generated timestamp on same top band (right aligned)
-            doc.fillColor(mutedText).fontSize(9).text(`Generated: ${new Date(summary.generatedAt).toLocaleString()}` , {
-                align: 'right'
-            });
+            drawReportHeader(doc, { subtitle: 'Owner Revenue & Bookings Report', accent: primaryColor });
+            doc.fillColor(mutedText).fontSize(9).text(`Generated: ${new Date(summary.generatedAt).toLocaleString()}`);
             doc.moveDown(0.25);
             doc.fillColor(grayText).fontSize(10).text(`Period: ${summary.period.start || 'N/A'} to ${summary.period.end || 'N/A'}`);
             doc.moveDown(0.3);
