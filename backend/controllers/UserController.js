@@ -204,6 +204,7 @@ export const getAllUsers = async (req, res) => {
 
 // Admin: Export users as a PDF report
 import PDFDocument from 'pdfkit';
+import { drawReportHeader } from '../utils/pdfHeader.js';
 export const exportUsersPdf = async (req, res) => {
     try {
         const { search } = req.query || {};
@@ -224,12 +225,12 @@ export const exportUsersPdf = async (req, res) => {
         const doc = new PDFDocument({ size: 'A4', margin: 40 });
         doc.pipe(res);
 
-        // Title
-        doc.fontSize(18).text('TuneShare - Users Report', { align: 'center' });
-        doc.moveDown(0.2);
-        doc.fontSize(10).fillColor('#555').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
-        doc.moveDown(1);
-        doc.fillColor('black');
+    // Standardized header
+    drawReportHeader(doc, { subtitle: 'Users Report' });
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor('#555').text(`Generated: ${new Date().toLocaleString()}`);
+    doc.moveDown(1);
+    doc.fillColor('black');
 
         // Summary
         doc.fontSize(12).text(`Total users: ${users.length}`);

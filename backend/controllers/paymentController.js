@@ -1,6 +1,7 @@
 import express from 'express';
 import Stripe from 'stripe';
 import PDFDocument from 'pdfkit';
+import { drawReportHeader } from '../utils/pdfHeader.js';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 
@@ -459,17 +460,11 @@ export const downloadPaymentReport = async (req, res) => {
     // Pipe PDF stream
     doc.pipe(res);
 
-    // Header
-    doc
-      .fontSize(18)
-      .fillColor('#111')
-      .text('TuneShare - Payment Report', { align: 'left' })
-      .moveDown(0.5);
-    doc
-      .fontSize(10)
-      .fillColor('#666')
-      .text(`Generated: ${new Date().toLocaleString()}`)
-      .moveDown(1);
+    // Header (standardized)
+    drawReportHeader(doc, { subtitle: 'Payment Report', accent: '#ec4899' });
+    doc.fontSize(10).fillColor('#ffffff'); // ensure contrast on bar (no text added)
+    doc.moveDown(0.2);
+    doc.fillColor('#666').text(`Generated: ${new Date().toLocaleString()}`);
 
     // Payment summary
     const booking = payment.booking;
@@ -580,16 +575,10 @@ export const downloadUserReceipt = async (req, res) => {
 
   const yStart = doc.y;
 
-  // Header bar
-  doc.save();
-  doc.rect(LEFT, 40, CONTENT_W, 60).fill(ACCENT);
-    doc.restore();
+  // Header (standardized)
+  drawReportHeader(doc, { subtitle: 'Payment Receipt', accent: ACCENT, y: 40, left: LEFT, right: RIGHT });
 
-    // Brand/Title over the bar
-  doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('TuneShare', LEFT + 10, 55, { continued: true });
-    doc.font('Helvetica').text(' • Payment Receipt');
-
-    // Receipt meta box
+  // Receipt meta box
     const metaTop = 110;
   doc.roundedRect(LEFT, metaTop, CONTENT_W, 70, 6).strokeColor(BORDER).lineWidth(1).stroke();
   const META_PAD = 15;
@@ -613,21 +602,31 @@ export const downloadUserReceipt = async (req, res) => {
       doc.restore().opacity(1);
     }
 
-    // Parties / Customer block
+  // Parties / Customer block
   const blockTop = metaTop + 90;
   const leftColX = LEFT;
   const rightColX = LEFT + CONTENT_W / 2 + 10;
   const rightColW = RIGHT - rightColX;
-  doc.fontSize(12).fillColor(DARK).text('Billed To', leftColX, blockTop);
+  doc.fontSize(12).fillColor(DARK).font('Helvetica-Bold').text('Billed To', leftColX, blockTop);
   doc.fontSize(10).fillColor(MUTED).text('Name', leftColX, blockTop + 18);
   doc.fontSize(12).fillColor(DARK).text(safeText(payment.user?.name) || '—', leftColX, blockTop + 32, { width: CONTENT_W / 2 - 20 });
   doc.fontSize(10).fillColor(MUTED).text('Email', leftColX, blockTop + 52);
   doc.fontSize(12).fillColor(DARK).text(safeText(payment.user?.email) || '—', leftColX, blockTop + 66, { width: CONTENT_W / 2 - 20 });
+  // Billing details captured pre-payment (if available)
+  if (payment.billingInfo) {
+    const bi = payment.billingInfo;
+    doc.fontSize(10).fillColor(MUTED).text('Billing Address', leftColX, blockTop + 86);
+    doc.fontSize(12).fillColor(DARK).text(safeText(bi.address) || '—', leftColX, blockTop + 100, { width: CONTENT_W / 2 - 20 });
+    doc.fontSize(10).fillColor(MUTED).text('NIC / ID', leftColX, blockTop + 120);
+    doc.fontSize(12).fillColor(DARK).text(safeText(bi.nic) || '—', leftColX, blockTop + 134, { width: CONTENT_W / 2 - 20 });
+    doc.fontSize(10).fillColor(MUTED).text('Phone', leftColX, blockTop + 154);
+    doc.fontSize(12).fillColor(DARK).text(safeText(bi.phone) || '—', leftColX, blockTop + 168, { width: CONTENT_W / 2 - 20 });
+  }
 
     // Booking Summary
     const booking = payment.booking;
     const instrument = booking?.instrument;
-  doc.fontSize(12).fillColor(DARK).text('Booking Summary', rightColX, blockTop, { width: rightColW });
+  doc.fontSize(12).fillColor(DARK).font('Helvetica-Bold').text('Booking Summary', rightColX, blockTop, { width: rightColW });
     const pickup = booking?.pickupDate ? new Date(booking.pickupDate) : null;
     const ret = booking?.returnDate ? new Date(booking.returnDate) : null;
     const msInDay = 24 * 60 * 60 * 1000;
@@ -645,7 +644,7 @@ export const downloadUserReceipt = async (req, res) => {
   doc.fontSize(12).fillColor(DARK).text(periodStr, rightColX, blockTop + 134, { width: rightColW });
 
     // Charges Table
-  const tableTop = blockTop + 170;
+  const tableTop = blockTop + (payment.billingInfo ? 200 : 170);
   const tableX = LEFT;
   const tableW = CONTENT_W;
   const rowH = 26;
@@ -686,7 +685,7 @@ export const downloadUserReceipt = async (req, res) => {
   doc.text(toCurrency(amountDisplay, payment.currency), xAmt, r1Top + 7, { width: amtW - PAD, align: 'right' });
 
     // Totals area
-    const totalsTop = r1Top + rowH + 10;
+  const totalsTop = r1Top + rowH + 10;
     const labelW = 120;
     const valueW = 120;
     const totalsX = tableX + tableW - (labelW + valueW + 10);

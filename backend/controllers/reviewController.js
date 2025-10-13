@@ -175,8 +175,9 @@ export const adminExportReviewsPdf = async (req, res) => {
     const max = count ? Math.max(...ratings) : 0;
 
     // Build PDF (A4 = 595x842 pt)
-    const PDFDocument = (await import('pdfkit')).default;
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const PDFDocument = (await import('pdfkit')).default;
+  const { drawReportHeader } = await import('../utils/pdfHeader.js');
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
     const fileName = `reviews_report_${Date.now()}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
@@ -203,7 +204,7 @@ export const adminExportReviewsPdf = async (req, res) => {
     let pageNum = 1;
 
     const drawHeader = () => {
-      doc.fontSize(18).fillColor('#111').text('Ratings & Reviews Report', startX, startY, { width: contentWidth, align: 'left' });
+      drawReportHeader(doc, { subtitle: 'Ratings & Reviews Report', accent: '#ec4899' });
       const rangeText = `${from ? `From ${new Date(from).toLocaleDateString()}` : ''}${from && to ? ' ' : ''}${to ? `To ${new Date(to).toLocaleDateString()}` : ''}` || 'All time';
       doc.fontSize(10).fillColor('#555').text(rangeText, startX, doc.y + 2, { width: contentWidth });
 
