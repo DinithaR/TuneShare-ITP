@@ -337,12 +337,31 @@ export const generateOwnerReport = async (req, res) => {
         const grayText = '#374151';
         const mutedText = '#6b7280';
 
+        // Friendly short ref (e.g., R1234, O1234, B1234)
+        const formatRef = (id, prefix = 'R', digits = 4) => {
+            if (!id) return `${prefix}${'0'.repeat(digits)}`;
+            const s = String(id);
+            const hex = s.replace(/[^0-9a-fA-F]/g, '');
+            let num = 0;
+            if (hex.length >= 4) {
+                num = parseInt(hex.slice(-4), 16) % Math.pow(10, digits);
+            } else {
+                for (let i = 0; i < s.length; i++) num = (num + s.charCodeAt(i)) % Math.pow(10, digits);
+            }
+            return `${prefix}${String(num).padStart(digits, '0')}`;
+        };
+
         // Header with standardized component + period line
         const header = () => {
             drawReportHeader(doc, { subtitle: 'Owner Revenue & Bookings Report', accent: primaryColor });
             doc.fillColor(mutedText).fontSize(9).text(`Generated: ${new Date(summary.generatedAt).toLocaleString()}`);
             doc.moveDown(0.25);
             doc.fillColor(grayText).fontSize(10).text(`Period: ${summary.period.start || 'N/A'} to ${summary.period.end || 'N/A'}`);
+            // Show Owner and Report IDs
+            const friendlyOwner = formatRef(_id, 'O');
+            const reportId = formatRef(`${_id}-${Date.now()}`, 'R');
+            doc.moveDown(0.2);
+            doc.fillColor(mutedText).fontSize(9).text(`Owner ID: ${friendlyOwner}    Report ID: ${reportId}`);
             doc.moveDown(0.3);
             doc.strokeColor(lightBorder).moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
             doc.moveDown(0.5);
@@ -435,7 +454,7 @@ export const generateOwnerReport = async (req, res) => {
         const tableWidth2 = doc.page.width - doc.page.margins.left - doc.page.margins.right;
         const colWidths2 = [tableWidth2*0.09, tableWidth2*0.28, tableWidth2*0.12, tableWidth2*0.12, tableWidth2*0.13, tableWidth2*0.13, tableWidth2*0.13];
         let rowY2 = doc.y;
-        const headerRow = ['ID','Instrument','Status','Price','Created','Pickup','Return'];
+    const headerRow = ['ID','Instrument','Status','Price','Created','Pickup','Return'];
         const drawBookingRow = (cols, isHeader=false, zebra=false) => {
             if (rowY2 + 20 > doc.page.height - doc.page.margins.bottom) { footer(); doc.addPage(); rowY2 = doc.y; }
             if (zebra) {
@@ -446,11 +465,11 @@ export const generateOwnerReport = async (req, res) => {
             rowY2 += 18;
         };
         drawBookingRow(headerRow, true);
-        bookings.forEach((b, idx) => {
+    bookings.forEach((b, idx) => {
             if (idx >= 2000) return; // hard upper cap
             const instrumentName = b.instrument ? `${b.instrument.brand || ''} ${b.instrument.model || ''}`.trim().slice(0,30) : 'N/A';
             const line = [
-                b._id.toString().slice(-6),
+        formatRef(b._id, 'R'),
                 instrumentName,
                 b.status,
                 (b.price || 0).toFixed(2),

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPaymentIntent, mockPaymentSuccess, createCheckoutSession, stripeWebhook, listMyPayments, listAllPayments, debugPayment, syncPaymentStatus, downloadPaymentReport, getPaymentForBooking, downloadUserReceipt, createLateFeeCheckoutSession } from '../controllers/paymentController.js';
+import { createPaymentIntent, mockPaymentSuccess, createCheckoutSession, stripeWebhook, listMyPayments, listAllPayments, debugPayment, syncPaymentStatus, downloadPaymentReport, getPaymentForBooking, downloadUserReceipt, createLateFeeCheckoutSession, stripeDiag } from '../controllers/paymentController.js';
 import { protect, isAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -15,6 +15,7 @@ router.get('/for-booking/:bookingId', protect, getPaymentForBooking);
 router.get('/receipt/:paymentId', protect, downloadUserReceipt);
 router.get('/debug/:bookingId', protect, isAdmin, debugPayment);
 router.get('/sync/:bookingId', protect, syncPaymentStatus);
+router.get('/diag', protect, isAdmin, stripeDiag);
 
 // Stripe webhook endpoint (no auth middleware!)
 router.post('/webhook', stripeWebhook);
