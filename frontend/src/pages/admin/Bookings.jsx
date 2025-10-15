@@ -179,8 +179,20 @@ function fmtDate(d) {
     return date.toISOString().slice(0, 10);
   } catch { return '—'; }
 }
+function formatRef(id, prefix = 'R', digits = 4) {
+  if (!id) return `${prefix}${'0'.repeat(digits)}`;
+  const s = String(id);
+  const hex = s.replace(/[^0-9a-fA-F]/g, '');
+  let num = 0;
+  if (hex.length >= 4) {
+    num = parseInt(hex.slice(-4), 16) % Math.pow(10, digits);
+  } else {
+    for (let i = 0; i < s.length; i++) num = (num + s.charCodeAt(i)) % Math.pow(10, digits);
+  }
+  return `${prefix}${String(num).padStart(digits, '0')}`;
+}
 function shortId(id) {
-  return id ? String(id).slice(-6) : '—';
+  return formatRef(id, 'R');
 }
 function renderPayment(ps) {
   const classes = 'px-2 py-1 rounded-full text-xs inline-block';

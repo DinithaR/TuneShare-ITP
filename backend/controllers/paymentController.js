@@ -7,6 +7,34 @@ import Payment from '../models/Payment.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// GET /api/payments/diag (admin) - quick diagnostics for Stripe env/config
+export const stripeDiag = async (req, res) => {
+  try {
+    const hasStripeSecret = !!process.env.STRIPE_SECRET_KEY;
+    const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
+    const currency = (process.env.STRIPE_CURRENCY || 'lkr').toLowerCase();
+    const frontendUrl = process.env.FRONTEND_URL || null;
+    const mode = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test') ? 'test' : (process.env.STRIPE_SECRET_KEY ? 'live' : 'unknown');
+    // Try a minimal no-op call if secret exists (won't throw here without network)
+    res.json({
+      success: true,
+      env: {
+        hasStripeSecret,
+        hasWebhookSecret,
+        currency,
+        hasFrontendUrl: !!frontendUrl,
+        mode
+      },
+      webhook: {
+        path: '/api/payments/webhook',
+        expectsRawBody: true
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Diag failed', error: err.message });
+  }
+};
+
 // POST /api/payments/create-checkout-session
 export const createCheckoutSession = async (req, res) => {
   try {
@@ -460,11 +488,39 @@ export const downloadPaymentReport = async (req, res) => {
     // Pipe PDF stream
     doc.pipe(res);
 
+    // Helpers
+    const safeText = (t) => (t == null || t === '' ? '—' : String(t));
+    const toCurrency = (val, curr) => {
+      const code = (curr || payment?.currency || 'LKR').toUpperCase();
+      const num = Number.isFinite(Number(val)) ? Number(val) : 0;
+      return `${code} ${num.toFixed(2)}`;
+    };
+    const fmtDateTime = (d) => {
+      try { return d ? new Date(d).toLocaleString() : '—'; } catch { return '—'; }
+    };
+    const shorten = (s, head = 6, tail = 6) => {
+      const str = String(s || '');
+      if (!str) return '—';
+      if (str.length <= head + tail + 1) return str;
+      return `${str.slice(0, head)}…${str.slice(-tail)}`;
+    };
+    const formatRef = (id, prefix = 'X', digits = 4) => {
+      const s = String(id || '');
+      const hex = s.replace(/[^0-9a-fA-F]/g, '');
+      let num = 0;
+      if (hex.length >= 4) {
+        num = parseInt(hex.slice(-4), 16) % Math.pow(10, digits);
+      } else {
+        for (let i = 0; i < s.length; i++) num = (num + s.charCodeAt(i)) % Math.pow(10, digits);
+      }
+      return `${prefix}${String(num).padStart(digits, '0')}`;
+    };
+
     // Header (standardized)
     drawReportHeader(doc, { subtitle: 'Payment Report', accent: '#ec4899' });
     doc.fontSize(10).fillColor('#ffffff'); // ensure contrast on bar (no text added)
     doc.moveDown(0.2);
-    doc.fillColor('#666').text(`Generated: ${new Date().toLocaleString()}`);
+    doc.fillColor('#666').text(`Generated: ${fmtDateTime(new Date())}`);
 
     // Payment summary
     const booking = payment.booking;
@@ -474,18 +530,21 @@ export const downloadPaymentReport = async (req, res) => {
 
     const row = (label, value) => {
       doc.font('Helvetica-Bold').fillColor('#333').text(label, { continued: true });
-      doc.font('Helvetica').fillColor('#000').text(` ${value}`);
+      doc.font('Helvetica').fillColor('#000').text(` ${safeText(value)}`);
     };
 
     doc.fontSize(14).fillColor('#222').text('Payment Details').moveDown(0.5);
-    row('Payment ID:', payment._id.toString());
-    if (booking) row('Booking ID:', booking._id.toString());
-    row('Status:', payment.status || '');
-    row('Amount:', `${currency} ${payment.displayAmount ?? Math.round((payment.amount || 0) / 100)}`);
-    if (typeof payment.commission === 'number') row('Commission:', `${currency} ${payment.commission}`);
-    if (typeof payment.ownerPayout === 'number') row('Owner Payout:', `${currency} ${payment.ownerPayout}`);
-    if (payment.paidAt) row('Paid At:', new Date(payment.paidAt).toLocaleString());
-    row('Created:', new Date(payment.createdAt).toLocaleString());
+  row('Payment ID:', formatRef(payment._id, 'P'));
+  if (booking) row('Booking ID:', formatRef(booking._id, 'B'));
+    row('Status:', (payment.status || '').toUpperCase());
+    const displayAmount = typeof payment.displayAmount === 'number'
+      ? payment.displayAmount
+      : Math.round((payment.amount || 0) / 100);
+    row('Amount:', toCurrency(displayAmount, currency));
+    if (typeof payment.commission === 'number') row('Platform Fee:', toCurrency(payment.commission, currency));
+    if (typeof payment.ownerPayout === 'number') row('Owner Payout:', toCurrency(payment.ownerPayout, currency));
+    if (payment.paidAt) row('Paid At:', fmtDateTime(payment.paidAt));
+    row('Created:', fmtDateTime(payment.createdAt));
     doc.moveDown(1);
 
     // Parties
@@ -501,10 +560,10 @@ export const downloadPaymentReport = async (req, res) => {
     doc.moveDown(1);
 
     // Stripe references
-    doc.fontSize(14).fillColor('#222').text('Stripe References').moveDown(0.5);
-    if (payment.stripeSessionId) row('Checkout Session:', payment.stripeSessionId);
-    if (payment.stripePaymentIntentId) row('Payment Intent:', payment.stripePaymentIntentId);
-    if (booking?.stripeSessionId && booking.stripeSessionId !== payment.stripeSessionId) row('Booking Session:', booking.stripeSessionId);
+  doc.fontSize(14).fillColor('#222').text('Stripe References').moveDown(0.5);
+  if (payment.stripeSessionId) row('Checkout Session:', shorten(payment.stripeSessionId));
+  if (payment.stripePaymentIntentId) row('Payment Intent:', shorten(payment.stripePaymentIntentId));
+  if (booking?.stripeSessionId && booking.stripeSessionId !== payment.stripeSessionId) row('Booking Session:', shorten(booking.stripeSessionId));
     doc.moveDown(1);
 
     doc.fontSize(10).fillColor('#666').text('This report is automatically generated by TuneShare.', { align: 'center' });
@@ -587,8 +646,19 @@ export const downloadUserReceipt = async (req, res) => {
   const metaX1 = LEFT + META_PAD + META_COL_W;
   const metaX2 = LEFT + META_PAD + META_COL_W * 2;
   const metaW = META_COL_W - META_PAD * 1.5;
+  const formatRef = (id, prefix = 'X', digits = 4) => {
+    const s = String(id || '');
+    const hex = s.replace(/[^0-9a-fA-F]/g, '');
+    let num = 0;
+    if (hex.length >= 4) {
+      num = parseInt(hex.slice(-4), 16) % Math.pow(10, digits);
+    } else {
+      for (let i = 0; i < s.length; i++) num = (num + s.charCodeAt(i)) % Math.pow(10, digits);
+    }
+    return `${prefix}${String(num).padStart(digits, '0')}`;
+  };
   doc.fontSize(10).fillColor(MUTED).text('Receipt No.', metaX0, metaTop + 12, { width: metaW });
-  doc.fontSize(12).fillColor(DARK).text(payment._id.toString(), metaX0, metaTop + 26, { width: metaW });
+  doc.fontSize(12).fillColor(DARK).text(formatRef(payment._id, 'P'), metaX0, metaTop + 26, { width: metaW });
   doc.fontSize(10).fillColor(MUTED).text('Date', metaX1, metaTop + 12, { width: metaW });
   doc.fontSize(12).fillColor(DARK).text(new Date(payment.paidAt || payment.createdAt).toLocaleString(), metaX1, metaTop + 26, { width: metaW });
   doc.fontSize(10).fillColor(MUTED).text('Status', metaX2, metaTop + 12, { width: metaW });
@@ -634,7 +704,7 @@ export const downloadUserReceipt = async (req, res) => {
     const days = Math.max(1, daysRaw || 1);
 
   doc.fontSize(10).fillColor(MUTED).text('Booking ID', rightColX, blockTop + 18, { width: rightColW });
-  doc.fontSize(12).fillColor(DARK).text(booking?._id?.toString() || '—', rightColX, blockTop + 32, { width: rightColW });
+  doc.fontSize(12).fillColor(DARK).text(booking?._id ? formatRef(booking._id, 'B') : '—', rightColX, blockTop + 32, { width: rightColW });
   doc.fontSize(10).fillColor(MUTED).text('Instrument', rightColX, blockTop + 52, { width: rightColW });
   doc.fontSize(12).fillColor(DARK).text(`${safeText(instrument?.brand)} ${safeText(instrument?.model)}`.trim() || '—', rightColX, blockTop + 66, { width: rightColW });
   doc.fontSize(10).fillColor(MUTED).text('Location', rightColX, blockTop + 86, { width: rightColW });
@@ -704,10 +774,16 @@ export const downloadUserReceipt = async (req, res) => {
     // References
   const refTop = totalsTop + 70;
   doc.fontSize(12).fillColor(DARK).font('Helvetica-Bold').text('Payment References', LEFT, refTop, { width: CONTENT_W });
+  const shortenRef = (s, head = 6, tail = 6) => {
+    const str = String(s || '');
+    if (!str) return '—';
+    if (str.length <= head + tail + 1) return str;
+    return `${str.slice(0, head)}…${str.slice(-tail)}`;
+  };
   doc.fontSize(10).fillColor(MUTED).font('Helvetica').text('Checkout Session', LEFT, refTop + 18, { width: CONTENT_W });
-  doc.fontSize(11).fillColor(DARK).text(payment.stripeSessionId || '—', LEFT, refTop + 32, { width: CONTENT_W });
+  doc.fontSize(11).fillColor(DARK).text(shortenRef(payment.stripeSessionId), LEFT, refTop + 32, { width: CONTENT_W });
   doc.fontSize(10).fillColor(MUTED).text('Payment Intent', LEFT, refTop + 52, { width: CONTENT_W });
-  doc.fontSize(11).fillColor(DARK).text(payment.stripePaymentIntentId || '—', LEFT, refTop + 66, { width: CONTENT_W });
+  doc.fontSize(11).fillColor(DARK).text(shortenRef(payment.stripePaymentIntentId), LEFT, refTop + 66, { width: CONTENT_W });
 
     // Perforation-style separator and footer note
   const sepY = refTop + 95;
