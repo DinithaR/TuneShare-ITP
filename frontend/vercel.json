@@ -6,10 +6,6 @@
 	"outputDirectory": "dist",
 	"rewrites": [
 		{
-			"source": "/api/:path*",
-			"destination": "https://{env:BACKEND_URL}/api/:path*"
-		},
-		{
 			"source": "/(.*)",
 			"destination": "/index.html"
 		}
