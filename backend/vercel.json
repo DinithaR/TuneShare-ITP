@@ -1,0 +1,19 @@
+{
+	"version": 2,
+	"builds": [
+		{ "src": "server.js", "use": "@vercel/node" }
+	],
+	"functions": {
+		"server.js": {
+			"runtime": "nodejs20.x",
+			"maxDuration": 60,
+			"memory": 1024
+		}
+	},
+	"routes": [
+		{ "src": "/(.*)", "dest": "/server.js" }
+	],
+	"env": {
+		"PORT": "3000"
+	}
+}
